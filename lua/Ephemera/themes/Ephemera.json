@@ -1,0 +1,86 @@
+{
+	"transparent": true,
+	"glow": true,
+	"show_end_of_buffer": false,
+	"colors": {
+		"fg": "#ddcccc",
+		"bg": "#04040d",
+		"bgl": "#090909",
+		"black": "#000000",
+		"white": "#ffffff",
+		"eob": "#3c3c3c",
+		"border": "#ff1e00",
+		"title": "#ff1e00",
+
+		"cursor": "#ff2525",
+		"cursorLine": "#121212",
+		"visual": "#4a0a0a",
+		"line_nr": "#ff1010",
+
+		"comment": "#696969",
+		"string": "#e4b2ab",
+		"func": "#ff6347",
+		"kw": "#ff2525",
+		"identifier": "#d2d2d2",
+		"type": "#ff420f",
+		"type_builtin": "#ff420f",
+		"operator": "#d63e3e",
+		"bracket": "#ff2525",
+		"preprocessor": "#4b8902",
+		"bool": "#ffa07a",
+		"constant": "#f59064",
+
+		"search_highlight": "#ffaa00",
+		"search_bg": "#5631a6",
+		"inc_search_bg": "#ff3e0b",
+		"inc_search_fg": "#440000",
+		"cur_search_bg": "#ff5555",
+		"glow_color": "#ffeeee",
+
+		"pmenu_bg": "#17171d",
+		"pmenu_sel_bg": "#fa3e19",
+		"pmenu_fg": "#fc6142",
+
+		"added": "#4b8902",
+		"changed": "#ff8800",
+		"removed": "#ff0000",
+
+		"error": "#ff0000",
+		"warning": "#ffee00",
+		"hint": "#00ffee",
+		"info": "#14ff6a",
+
+		"bufferline_selection": "#fd1b1b",
+		"cyan": "#00FFFF",
+		"purple_light": "#b294bb",
+		"quote_fg": "#a1a1a1",
+
+		"orange1": "#ff9e64",
+		"orange2": "#ff8800",
+		"orange3": "#ff5500",
+		"orange4": "#db4b4b",
+
+		"red1": "#ff0000",
+		"red2": "#ff4444",
+		"red3": "#ff6565",
+		"red4": "#c53b53",
+		"red_light": "#ff5555",
+
+		"green1": "#00ff99",
+		"green2": "#50fa7b",
+		"green3": "#73daca",
+		"green4": "#2e8b57",
+
+		"blue1": "#00e1ff",
+		"blue2": "#61afef",
+		"blue3": "#7aa2f7",
+		"blue4": "#3d59a1",
+
+		"purple1": "#ff00ff",
+		"purple2": "#bd93f9",
+		"purple3": "#c678dd",
+		"purple4": "#9d7cd8",
+
+		"banner": "#FFED00"
+	}
+}

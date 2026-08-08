@@ -1,0 +1,11 @@
+# Plugin manager lockfile (regenerated on demand)
+lazy-lock.json
+
+# Personal notes (kept locally, not published)
+lua/Ephemera/notes/
+lua/Ephemera/notes.txt
+
+# Temp / scratch
+tmp/
+*.bak
+*.useless
