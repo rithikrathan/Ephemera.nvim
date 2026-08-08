@@ -141,7 +141,6 @@ function Modules.render_left_core()
         mode_group, label, mid_sep_group
     )
 
-    local tab_disp = "󰓩 " .. ((_G.tabName and _G.tabName()) or "tab1") .. " "
     local branch = (_G.git_branch ~= "") and (_G.git_branch .. "┆ ") or " "
     local mod = vim.bo.modified and " 𔒝 " or ""
 
@@ -173,7 +172,7 @@ function Modules.render_left_core()
     end
 
     local icon_comp = "%#" .. icon_hl .. "#" .. icon .. "%#" .. info_group .. "# "
-    local info_content = (branch ~= " ") and (tab_disp .. branch .. icon_comp .. filename_text) or
+    local info_content = (branch ~= " ") and (branch .. icon_comp .. filename_text ) or
         (" " .. tab_disp .. icon_comp .. filename_text)
 
     return table.concat({
@@ -275,8 +274,10 @@ _G.StatState = { mode = 1 }
 function Modules.stat_section()
     local mode = _G.StatState and _G.StatState.mode or 1
 
-    if mode == 1 then     -- position and percentage
-        return " %l:%c %p%% "
+        if mode == 1 then     -- position and percentage
+            local tab_disp = "󰓩 " .. ((_G.tabName and _G.tabName()) or " ") 
+            return  "%l:%c %p%% " .. "  "  .. tab_disp
+
     elseif mode == 2 then -- diagnostics
         -- Patch Diagnostic Highlights
         Modules.set_bridge_hl("SlDiagErr", "DiagnosticError", "StatusBody", false)
@@ -366,7 +367,7 @@ function Modules.get_harpoon_tabs()
             output = output .. string.format(" %d.%s", i, label)
         end
     end
-    return "┆" .. output
+    return "" .. output
 end
 
 function Modules.get_additional_section()
