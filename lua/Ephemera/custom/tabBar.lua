@@ -1,6 +1,6 @@
 local M = {}
 
-local TAB_WIDTH = 40
+local TAB_WIDTH = 45
 local CARD_LINES = 6
 
 local TAB_ICON = "󰓩"
@@ -290,7 +290,7 @@ function M.close()
     end
 
     local prev = M.prev_win
-    M.win, M.buf, M.prev_win = nil, nil, nil
+    M.win, M.buf, M.prev_win, M.mode = nil, nil, nil, nil
 
     if prev and vim.api.nvim_win_is_valid(prev) then
         if vim.api.nvim_win_get_tabpage(prev) == vim.api.nvim_get_current_tabpage() then
@@ -299,13 +299,18 @@ function M.close()
     end
 end
 
-function M.open()
+function M.open(mode)
+    mode = mode or "float"
     if M.win and vim.api.nvim_win_is_valid(M.win) then
         if vim.api.nvim_win_get_tabpage(M.win) == vim.api.nvim_get_current_tabpage() then
+            if M.mode == mode then
+                M.close()
+                return
+            end
             M.close()
-            return
+        else
+            pcall(vim.api.nvim_win_close, M.win, true)
         end
-        pcall(vim.api.nvim_win_close, M.win, true)
     end
 
     apply_hls()
@@ -313,21 +318,30 @@ function M.open()
     M.buf = vim.api.nvim_create_buf(false, true)
     M.ns = vim.api.nvim_create_namespace("EphemeraTabBar")
     setup_buffer(M.buf)
+    M.mode = mode
 
     local tab_count, current = render()
-    local g = card_geometry()
 
-    M.win = vim.api.nvim_open_win(M.buf, true, {
-        relative = "editor",
-        row = g.row,
-        col = g.col,
-        width = g.width,
-        height = g.height,
-        style = "minimal",
-        border = "single",
-        focusable = true,
-    })
-    vim.api.nvim_set_current_win(M.win)
+    if mode == "split" then
+        vim.cmd("noau vertical topleft 1split")
+        M.win = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(M.win, M.buf)
+        vim.api.nvim_win_set_width(M.win, card_geometry().width)
+        vim.opt_local.winfixwidth = true
+    else
+        local g = card_geometry()
+        M.win = vim.api.nvim_open_win(M.buf, true, {
+            relative = "editor",
+            row = g.row,
+            col = g.col,
+            width = g.width,
+            height = g.height,
+            style = "minimal",
+            border = "single",
+            focusable = true,
+        })
+        vim.api.nvim_set_current_win(M.win)
+    end
 
     vim.opt_local.number = false
     vim.opt_local.relativenumber = false
@@ -335,26 +349,23 @@ function M.open()
     vim.opt_local.foldcolumn = "0"
     vim.opt_local.cursorline = true
     vim.opt_local.scrolloff = 0
-    vim.opt_local.winhighlight = "FloatBorder:" .. HL.Border
+    vim.opt_local.winhighlight = (mode == "split") and ("WinSeparator:" .. HL.Border) or ("FloatBorder:" .. HL.Border)
 
     vim.api.nvim_win_set_cursor(M.win, { math.min(current, math.max(tab_count, 1)), 0 })
 end
 
-function M.toggle()
-    if M.win and vim.api.nvim_win_is_valid(M.win)
-        and vim.api.nvim_win_get_tabpage(M.win) == vim.api.nvim_get_current_tabpage() then
-        M.close()
-    else
-        M.open()
-    end
+function M.toggle(mode)
+    M.open(mode or "float")
 end
 
 function M.setup()
     apply_hls()
 
     vim.opt.showtabline = 0
-    vim.keymap.set({ "n", "t" }, "<A-t>", M.toggle, { desc = "Toggle tab bar" })
-    vim.api.nvim_create_user_command("TabBarToggle", M.toggle, { desc = "Toggle tab bar" })
+    vim.keymap.set({ "n", "t" }, "<A-t>", function() M.toggle("float") end, { desc = "Toggle tab bar (float)" })
+    vim.api.nvim_create_user_command("TabBarToggle", function(opts)
+        M.toggle(opts.args == "" and "split" or opts.args)
+    end, { nargs = "?", desc = "Toggle tab bar (split | float)" })
     vim.api.nvim_create_user_command("TabRename", function(opts)
         local tabnr = vim.api.nvim_tabpage_get_number(0)
         if opts.args ~= "" then
@@ -368,15 +379,19 @@ function M.setup()
     vim.api.nvim_create_autocmd("VimResized", {
         callback = function()
             if M.win and vim.api.nvim_win_is_valid(M.win) then
-                local g = card_geometry()
-                vim.api.nvim_win_set_config(M.win, {
-                    relative = "editor",
-                    row = g.row,
-                    col = g.col,
-                    width = g.width,
-                    height = g.height,
-                })
-                render()
+                if M.mode == "split" then
+                    render()
+                else
+                    local g = card_geometry()
+                    vim.api.nvim_win_set_config(M.win, {
+                        relative = "editor",
+                        row = g.row,
+                        col = g.col,
+                        width = g.width,
+                        height = g.height,
+                    })
+                    render()
+                end
             end
         end,
     })

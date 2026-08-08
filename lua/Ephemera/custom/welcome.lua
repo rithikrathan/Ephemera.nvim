@@ -290,6 +290,8 @@ function M.setup()
 			local lines = vim.api.nvim_buf_get_lines(buf, 0, 1, false)
 			if #lines == 0 or #lines[1] ~= 0 then return end
 			M.draw()
+            vim.opt_local.statusline = " "
+            vim.opt_local.winhl = "StatusLine:Normal,StatusLineNC:Normal"
 		end,
 	})
 end
