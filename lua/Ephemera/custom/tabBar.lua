@@ -1,7 +1,6 @@
 local M = {}
 
-local TAB_WIDTH = 69
-local CLOSE_W = 3 -- width of the "[x]" suffix
+local TAB_WIDTH = 40
 local CARD_LINES = 6
 
 local TAB_ICON = "󰓩"
@@ -26,7 +25,7 @@ local HL = {
     Icon = "EphemeraTabIcon",
     Count = "EphemeraTabCount",
     File = "EphemeraTabIcon",
-    New = "DiagnosticHint",
+    New = "EphemeraTabCount",
     Border = "EphemeraTabBorder",
 }
 
@@ -111,7 +110,7 @@ local function render()
 
     local tab_count = vim.fn.tabpagenr("$")
     local current = vim.api.nvim_tabpage_get_number(0)
-    local pad = TAB_WIDTH - CLOSE_W
+    local pad = TAB_WIDTH
     local narrow = card_geometry().width < 45
 
     local name_cap = pad - 8
@@ -181,12 +180,11 @@ local function render()
             body = body .. tok.text
         end
 
-        local text = body .. string.rep(" ", pad - vim.fn.strdisplaywidth(body)) .. "[x]"
+        local text = body .. string.rep(" ", pad - vim.fn.strdisplaywidth(body))
 
         lines[#lines + 1] = text
         local segs = {}
         for _, s in ipairs(row_marks) do segs[#segs + 1] = s end
-        segs[#segs + 1] = { pad, CLOSE_W, "Keyword" }
         marks[#marks + 1] = segs
     end
 
@@ -215,14 +213,6 @@ end
 local function act_on_line(line)
     local tab_count = vim.fn.tabpagenr("$")
     if line <= tab_count then
-        local col = vim.api.nvim_win_get_cursor(0)[2]
-        if col >= TAB_WIDTH - CLOSE_W then
-            if tab_count > 1 then
-                vim.cmd(line .. "tabclose")
-                render()
-            end
-            return
-        end
         vim.cmd(line .. "tabnext")
     elseif line == tab_count + 1 then
         vim.cmd("tabnew")
