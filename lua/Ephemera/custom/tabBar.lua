@@ -6,11 +6,15 @@ local CARD_LINES = 6
 local TAB_ICON = "󰓩"
 local HSPLIT_ICON = "⇅ "
 local VSPLIT_ICON = "⇄ "
+local FLOAT_ICON = "󰊕 "
 
 M.win = nil
 M.buf = nil
 M.prev_win = nil
 M.ns = nil
+M.enabled = false
+M.seen = {}
+M.cursor_line = nil
 
 _G.tabName = function(tabnr)
     tabnr = tabnr or vim.api.nvim_tabpage_get_number(0)
@@ -53,6 +57,10 @@ local function card_geometry()
     return { width = width, height = height, col = col, row = row }
 end
 
+local function split_width()
+    return math.max(8, math.floor(card_geometry().width / 2))
+end
+
 local function trunc_to(s, width)
     if vim.fn.strdisplaywidth(s) <= width then return s end
     local out, w = "", 0
@@ -64,9 +72,18 @@ local function trunc_to(s, width)
     return out
 end
 
+local function tabpage_of(tabnr)
+    for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
+        if vim.api.nvim_tabpage_get_number(tp) == tabnr then return tp end
+    end
+    return nil
+end
+
 local function normal_windows(tabnr)
+    local tp = tabpage_of(tabnr)
+    if not tp then return {} end
     local wins = {}
-    for _, w in ipairs(vim.api.nvim_tabpage_list_wins(tabnr)) do
+    for _, w in ipairs(vim.api.nvim_tabpage_list_wins(tp)) do
         local cfg = vim.api.nvim_win_get_config(w)
         if cfg.relative == "" and not (M.win and vim.api.nvim_win_is_valid(M.win) and w == M.win) then
             wins[#wins + 1] = w
@@ -89,9 +106,24 @@ local function split_counts(tabnr)
     return h, v
 end
 
+local function float_count(tabnr)
+    local tp = tabpage_of(tabnr)
+    if not tp then return 0 end
+    local n = 0
+    for _, w in ipairs(vim.api.nvim_tabpage_list_wins(tp)) do
+        local cfg = vim.api.nvim_win_get_config(w)
+        if cfg.relative ~= "" and vim.api.nvim_win_get_buf(w) ~= M.buf then
+            n = n + 1
+        end
+    end
+    return n
+end
+
 local function tab_file(tabnr)
     local normal = normal_windows(tabnr)
-    local win = normal[1] or vim.api.nvim_tabpage_get_win(tabnr)
+    local tp = tabpage_of(tabnr)
+    local win = normal[1] or (tp and vim.api.nvim_tabpage_get_win(tp))
+    if not win then return "" end
     local fname = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(win))
     return (fname ~= "") and vim.fn.fnamemodify(fname, ":t") or "[No Name]"
 end
@@ -110,7 +142,7 @@ local function render()
 
     local tab_count = vim.fn.tabpagenr("$")
     local current = vim.api.nvim_tabpage_get_number(0)
-    local pad = TAB_WIDTH
+    local pad = (M.mode == "split") and split_width() or TAB_WIDTH
     local narrow = card_geometry().width < 45
 
     local name_cap = pad - 8
@@ -118,7 +150,7 @@ local function render()
     local max_name = 0
     for t = 1, tab_count do
         local name = _G.tabName(t)
-        if t == current then name = "[" .. name .. "]" end
+        if tab_count > 1 and t == current then name = "[" .. name .. "]" end
         local short = name
         if vim.fn.strdisplaywidth(" " .. name) > name_cap then
             short = trunc_to(name, math.max(1, name_cap - 1))
@@ -146,7 +178,7 @@ local function render()
         add(TAB_ICON, active and HL.Active or HL.Inactive)
         add(" " .. short_name, active and HL.Active or HL.Inactive)
 
-        if not narrow then
+        if M.mode ~= "split" and not narrow then
             add(string.rep(" ", name_col - name_w))
 
             local h, v = split_counts(t)
@@ -158,6 +190,13 @@ local function render()
                 add(" ")
                 add(VSPLIT_ICON, HL.Icon)
                 add(tostring(v), HL.Count)
+            end
+
+            local nf = float_count(t)
+            if nf > 0 then
+                add(" ")
+                add(FLOAT_ICON, HL.Icon)
+                add(tostring(nf), HL.Count)
             end
 
             local avail = pad - w - 1
@@ -212,6 +251,7 @@ end
 
 local function act_on_line(line)
     local tab_count = vim.fn.tabpagenr("$")
+    M.cursor_line = line
     if line <= tab_count then
         vim.cmd(line .. "tabnext")
     elseif line == tab_count + 1 then
@@ -223,8 +263,12 @@ end
 local function close_tab_at(line)
     local tab_count = vim.fn.tabpagenr("$")
     if line <= tab_count and tab_count > 1 then
-        vim.cmd(line .. "tabclose")
-        render()
+        local choice = vim.fn.confirm("Close tab " .. _G.tabName(line) .. "?", "&Yes\n&No", 2)
+        if choice ~= 1 then return end
+        if line <= vim.fn.tabpagenr("$") and vim.fn.tabpagenr("$") > 1 then
+            vim.cmd(line .. "tabclose")
+            render()
+        end
     end
 end
 
@@ -277,20 +321,99 @@ local function setup_buffer(buf)
     vim.keymap.set("n", "q", function() M.close() end, { buffer = buf, desc = "Close tab bar" })
     vim.keymap.set("n", "<Esc>", function() M.close() end, { buffer = buf, desc = "Close tab bar" })
 
+    vim.api.nvim_create_autocmd("CursorMoved", {
+        buffer = buf,
+        callback = function()
+            if M.buf == vim.api.nvim_get_current_buf() then
+                M.cursor_line = vim.api.nvim_win_get_cursor(0)[1]
+            end
+        end,
+    })
+
     for _, key in ipairs({ "i", "a", "I", "A", "o", "O", "R", "s", "S", "c", "C", "d", "D", "X", "p", "P" }) do
         vim.keymap.set("n", key, "<Nop>", { buffer = buf })
     end
 end
 
+local function tabbar_win_in(tabpage)
+    if not (M.buf and vim.api.nvim_buf_is_valid(M.buf)) then return nil end
+    for _, w in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
+        if vim.api.nvim_win_get_buf(w) == M.buf then return w end
+    end
+    return nil
+end
+
+local function apply_win_opts(win, mode)
+    vim.api.nvim_win_call(win, function()
+        vim.opt_local.number = false
+        vim.opt_local.relativenumber = false
+        vim.opt_local.signcolumn = "no"
+        vim.opt_local.foldcolumn = "0"
+        vim.opt_local.cursorline = true
+        vim.opt_local.scrolloff = 0
+        vim.opt_local.winhighlight = (mode == "split") and ("WinSeparator:" .. HL.Border) or ("FloatBorder:" .. HL.Border)
+    end)
+end
+
+local function open_win_in_tab(tabpage, mode)
+    local win
+    if mode == "split" then
+        local cur = vim.api.nvim_get_current_tabpage()
+        if cur ~= tabpage then
+            vim.cmd("noau tabnext " .. vim.api.nvim_tabpage_get_number(tabpage))
+        end
+        vim.cmd("noau vertical topleft 1split")
+        win = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(win, M.buf)
+        vim.api.nvim_win_set_width(win, split_width())
+        vim.opt_local.winfixwidth = true
+        if cur ~= tabpage then
+            vim.cmd("noau tabnext " .. vim.api.nvim_tabpage_get_number(cur))
+        end
+    else
+        local g = card_geometry()
+        win = vim.api.nvim_open_win(M.buf, false, {
+            relative = "editor",
+            row = g.row,
+            col = g.col,
+            width = g.width,
+            height = g.height,
+            style = "minimal",
+            border = "single",
+            focusable = true,
+        })
+    end
+    apply_win_opts(win, mode)
+    return win
+end
+
+local function focus_bar(tabpage, opts)
+    opts = opts or {}
+    local win = tabbar_win_in(tabpage) or open_win_in_tab(tabpage, M.mode)
+    M.win = win
+    local tab_count, current = render()
+    vim.api.nvim_set_current_win(win)
+    if opts.preserve and M.cursor_line then
+        vim.api.nvim_win_set_cursor(win, { math.min(M.cursor_line, tab_count), 0 })
+    else
+        vim.api.nvim_win_set_cursor(win, { math.min(current, math.max(tab_count, 1)), 0 })
+    end
+    return win
+end
+
 function M.close()
-    if M.win and vim.api.nvim_win_is_valid(M.win) then
-        if vim.api.nvim_win_get_tabpage(M.win) == vim.api.nvim_get_current_tabpage() then
-            pcall(vim.api.nvim_win_close, M.win, true)
+    M.enabled = false
+    if M.buf and vim.api.nvim_buf_is_valid(M.buf) then
+        for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
+            local win = tabbar_win_in(tp)
+            if win then pcall(vim.api.nvim_win_close, win, true) end
         end
     end
 
     local prev = M.prev_win
     M.win, M.buf, M.prev_win, M.mode = nil, nil, nil, nil
+    M.seen = {}
+    M.cursor_line = nil
 
     if prev and vim.api.nvim_win_is_valid(prev) then
         if vim.api.nvim_win_get_tabpage(prev) == vim.api.nvim_get_current_tabpage() then
@@ -301,16 +424,12 @@ end
 
 function M.open(mode)
     mode = mode or "float"
-    if M.win and vim.api.nvim_win_is_valid(M.win) then
-        if vim.api.nvim_win_get_tabpage(M.win) == vim.api.nvim_get_current_tabpage() then
-            if M.mode == mode then
-                M.close()
-                return
-            end
+    if M.enabled then
+        if M.mode == mode then
             M.close()
-        else
-            pcall(vim.api.nvim_win_close, M.win, true)
+            return
         end
+        M.close()
     end
 
     apply_hls()
@@ -319,39 +438,14 @@ function M.open(mode)
     M.ns = vim.api.nvim_create_namespace("EphemeraTabBar")
     setup_buffer(M.buf)
     M.mode = mode
+    M.enabled = true
 
-    local tab_count, current = render()
-
-    if mode == "split" then
-        vim.cmd("noau vertical topleft 1split")
-        M.win = vim.api.nvim_get_current_win()
-        vim.api.nvim_win_set_buf(M.win, M.buf)
-        vim.api.nvim_win_set_width(M.win, card_geometry().width)
-        vim.opt_local.winfixwidth = true
-    else
-        local g = card_geometry()
-        M.win = vim.api.nvim_open_win(M.buf, true, {
-            relative = "editor",
-            row = g.row,
-            col = g.col,
-            width = g.width,
-            height = g.height,
-            style = "minimal",
-            border = "single",
-            focusable = true,
-        })
-        vim.api.nvim_set_current_win(M.win)
+    M.seen = {}
+    for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
+        M.seen[tp] = true
     end
 
-    vim.opt_local.number = false
-    vim.opt_local.relativenumber = false
-    vim.opt_local.signcolumn = "no"
-    vim.opt_local.foldcolumn = "0"
-    vim.opt_local.cursorline = true
-    vim.opt_local.scrolloff = 0
-    vim.opt_local.winhighlight = (mode == "split") and ("WinSeparator:" .. HL.Border) or ("FloatBorder:" .. HL.Border)
-
-    vim.api.nvim_win_set_cursor(M.win, { math.min(current, math.max(tab_count, 1)), 0 })
+    focus_bar(vim.api.nvim_get_current_tabpage(), { preserve = false })
 end
 
 function M.toggle(mode)
@@ -363,9 +457,9 @@ function M.setup()
 
     vim.opt.showtabline = 0
     vim.keymap.set({ "n", "t" }, "<A-t>", function() M.toggle("float") end, { desc = "Toggle tab bar (float)" })
-    vim.api.nvim_create_user_command("TabBarToggle", function(opts)
-        M.toggle(opts.args == "" and "split" or opts.args)
-    end, { nargs = "?", desc = "Toggle tab bar (split | float)" })
+    vim.api.nvim_create_user_command("Tab", function()
+        M.toggle("split")
+    end, { desc = "Toggle tab bar (split)" })
     vim.api.nvim_create_user_command("TabRename", function(opts)
         local tabnr = vim.api.nvim_tabpage_get_number(0)
         if opts.args ~= "" then
@@ -376,23 +470,52 @@ function M.setup()
     end, { nargs = "*", desc = "Rename current tab" })
 
     vim.api.nvim_create_autocmd("ColorScheme", { callback = apply_hls })
+    vim.api.nvim_create_autocmd("TabEnter", {
+        callback = function()
+            if not M.enabled then return end
+            local tabpage = vim.api.nvim_get_current_tabpage()
+            if not M.seen[tabpage] then
+                M.seen[tabpage] = true
+                M.prev_win = vim.api.nvim_get_current_win()
+                return
+            end
+            M.prev_win = vim.api.nvim_get_current_win()
+            focus_bar(tabpage, { preserve = true })
+        end,
+    })
+    vim.api.nvim_create_autocmd("TabNewEntered", {
+        callback = function()
+            if not M.enabled then return end
+            local tabpage = vim.api.nvim_get_current_tabpage()
+            M.seen[tabpage] = true
+            M.prev_win = vim.api.nvim_get_current_win()
+            focus_bar(tabpage, { preserve = true })
+        end,
+    })
     vim.api.nvim_create_autocmd("VimResized", {
         callback = function()
-            if M.win and vim.api.nvim_win_is_valid(M.win) then
-                if M.mode == "split" then
-                    render()
-                else
-                    local g = card_geometry()
-                    vim.api.nvim_win_set_config(M.win, {
-                        relative = "editor",
-                        row = g.row,
-                        col = g.col,
-                        width = g.width,
-                        height = g.height,
-                    })
-                    render()
+            if not M.enabled then return end
+            local g = card_geometry()
+            for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
+                local win = tabbar_win_in(tp)
+                if win then
+                    if M.mode == "float" then
+                        vim.api.nvim_win_set_config(win, {
+                            relative = "editor",
+                            row = g.row,
+                            col = g.col,
+                            width = g.width,
+                            height = g.height,
+                        })
+                    end
                 end
             end
+            if M.win and vim.api.nvim_win_is_valid(M.win) then
+                if M.mode == "split" then
+                    vim.api.nvim_win_set_width(M.win, split_width())
+                end
+            end
+            render()
         end,
     })
 end

@@ -173,7 +173,7 @@ function Modules.render_left_core()
 
     local icon_comp = "%#" .. icon_hl .. "#" .. icon .. "%#" .. info_group .. "# "
     local info_content = (branch ~= " ") and (branch .. icon_comp .. filename_text ) or
-        (" " .. tab_disp .. icon_comp .. filename_text)
+        (" " .. icon_comp .. filename_text)
 
     return table.concat({
         mode_block,
@@ -275,8 +275,12 @@ function Modules.stat_section()
     local mode = _G.StatState and _G.StatState.mode or 1
 
         if mode == 1 then     -- position and percentage
-            local tab_disp = "󰓩 " .. ((_G.tabName and _G.tabName()) or " ") 
-            return  "%l:%c %p%% " .. "  "  .. tab_disp
+            local tab_disp = ""
+            if vim.fn.tabpagenr("$") > 1 and _G.tabName then
+                tab_disp = "󰓩 " .. _G.tabName()
+            end
+            local tab_part = (tab_disp ~= "") and ("  " .. tab_disp) or ""
+            return  "%l:%c %p%% " .. tab_part
 
     elseif mode == 2 then -- diagnostics
         -- Patch Diagnostic Highlights
