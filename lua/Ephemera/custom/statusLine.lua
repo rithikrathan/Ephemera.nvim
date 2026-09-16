@@ -6,13 +6,14 @@
 local ft_map = {
     -- ["oil"]             = { name = "Explorer", icon = "", color = "#fabd2f" },
     ["oil"]             = { name = "Explorer", icon = "📂", color = "#fabd2f" },
-    -- ["compilation"]     = { name = "Run", icon = "", color = "#09a409" },
-    ["compilation"]     = { name = "Compilation", icon = "", color = "#09a409" },
+    ["run"]     = { name = "Run", icon = "", color = "#09a409" },
+    -- ["compilation"]     = { name = "Compilation", icon = "", color = "#09a409" },
     ["fzf"]             = { name = "Fuzzy Find", icon = "꩜ ", color = "#fabd2f" },
     ["qf"]              = { name = "Quickfix", icon = "🔧", color = "#fabd2f" },
     ["aerial"]          = { name = "Aerial", icon = "𑣲𝑨", color = "#fabd2f" },
     ["TelescopePrompt"] = { name = "Telescope", icon = "🔭", color = "#83a598" },
-    ["alpha"]           = { name = "Dashboard", icon = "󰕮", color = "#d3869b" },
+    ["alpha"]           = { name = "Dashboard", icon = "󰕮", color = "#d3869b" }, -- what is this???
+    ["tabBar"]           = { name = "Tabs", icon = "󰕮", color = "#fb4934" },
     ["checkhealth"]     = { name = "Health", icon = "✚", color = "#fb4934" },
     ["lazy"]            = { name = "Lazy", icon = "🦦", color = "#8ec07c" },
     ["mason"]           = { name = "Mason", icon = "🧱", color = "#b8bb26" },

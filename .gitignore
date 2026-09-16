@@ -7,5 +7,6 @@ lua/Ephemera/notes.txt
 
 # Temp / scratch
 tmp/
+test_samples/
 *.bak
 *.useless

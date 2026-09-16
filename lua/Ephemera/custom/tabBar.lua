@@ -292,6 +292,7 @@ end
 local function setup_buffer(buf)
     vim.bo[buf].buftype = "nofile"
     vim.bo[buf].bufhidden = "wipe"
+    vim.bo[buf].filetype = "tabBar"
     vim.bo[buf].buflisted = false
     vim.bo[buf].modifiable = false
     vim.bo[buf].swapfile = false

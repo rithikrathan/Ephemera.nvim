@@ -25,7 +25,7 @@ M.config = {
 		{ "l", "⟲   LastFile", "`0" },
 		{ "e", "🗁  Explorer", ":Oil --float" },
 		{ "f", "🔍  Find File", ":Telescope find_files  " },
-		{ "r", "🗐  Recent", ":Telescope oldfiles  " },
+		{ "r", "⟲   Last Session", ":silent! bwipeout | AutoSession restore  " },
 		{ "c", "⚙️  Config", ":e $MYVIMRC  " },
 		{ "q", "➜]  Quit", ":qa  " },
 	},
