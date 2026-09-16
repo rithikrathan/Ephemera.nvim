@@ -81,6 +81,7 @@ return {
 					["r"] = "require('Ephemera.custom.compileMode').clear()",
 					["q"] = "require('Ephemera.custom.compileMode').destroy()",
 					["w"] = "require('Ephemera.custom.compileMode').toggle_watch()",
+					["s"] = "require('Ephemera.custom.compileMode').term.cycle_split()",
 					["Q"] = "require('Ephemera.custom.compileMode').export_to_qf()",
 					["n"] = "require('Ephemera.custom.compileMode').next_error()",
 					["p"] = "require('Ephemera.custom.compileMode').prev_error()",

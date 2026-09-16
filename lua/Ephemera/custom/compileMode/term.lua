@@ -98,6 +98,40 @@ function compile.term.toggle()
 	end
 end
 
+local split_cycle = {
+	{ name = "right", cmd = "wincmd L", resize = function(w) vim.api.nvim_win_set_width(w, math.floor(vim.o.columns * 0.45)) end, split_opt = "right" },
+	{ name = "top", cmd = "wincmd K", resize = function(w) vim.api.nvim_win_set_height(w, math.floor(vim.o.lines * 0.4)) end, split_opt = "above" },
+	{ name = "left", cmd = "wincmd H", resize = function(w) vim.api.nvim_win_set_width(w, math.floor(vim.o.columns * 0.45)) end, split_opt = "left" },
+	{ name = "bottom", cmd = "wincmd J", resize = function(w) vim.api.nvim_win_set_height(w, math.floor(vim.o.lines * 0.4)) end, split_opt = "below" },
+}
+
+--- Cycles compilation split window alignment (bottom -> right -> top -> left)
+--- Keeps text wrapping explicitly OFF for accurate regex parsing.
+function compile.term.cycle_split()
+	local win = compile.term.state.win
+	if not vim.api.nvim_win_is_valid(win) then
+		return
+	end
+
+	compile.term.state.split_idx = ((compile.term.state.split_idx or 4) % #split_cycle) + 1
+	local target = split_cycle[compile.term.state.split_idx]
+
+	vim.api.nvim_set_current_win(win)
+	vim.cmd(target.cmd)
+	if target.resize then
+		target.resize(win)
+	end
+
+	-- Explicitly keep text wrapping OFF
+	vim.api.nvim_set_option_value("wrap", false, { scope = "local", win = win })
+
+	if compile.opts and compile.opts.term_win_opts then
+		compile.opts.term_win_opts.split = target.split_opt
+	end
+
+	vim.notify("CompileMode: Split aligned to " .. target.name, vim.log.levels.INFO)
+end
+
 local function is_windows_os()
 	local sys = vim.loop.os_uname()
 	if sys.sysname == "Window_NT" then
