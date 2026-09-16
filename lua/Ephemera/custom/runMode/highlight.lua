@@ -15,16 +15,23 @@ compile.highlight.state = {
 
 compile.highlight.ns = vim.api.nvim_create_namespace("TermHl")
 
-local opts = {}
+local function setup_run_blink()
+	local bool_hl = vim.api.nvim_get_hl(0, { name = "Boolean", link = false })
+	local orange = bool_hl.fg or "#ffa07a"
+	vim.api.nvim_set_hl(0, "RunBlink", {
+		bg = orange,
+		fg = "#000000",
+		bold = true,
+	})
+end
 
 --- Initialize highlight module
 function compile.highlight.setup(o)
 	opts = o
-	vim.api.nvim_set_hl(0, "RunBlink", {
-		bg = "#271238", -- Dark subtle purple background
-		fg = "#e8d8f8", -- Soft contrast foreground
-		bold = true,
-		default = true,
+	setup_run_blink()
+	vim.api.nvim_create_autocmd("ColorScheme", {
+		callback = setup_run_blink,
+		desc = "Refresh RunBlink highlight from Boolean color",
 	})
 end
 
