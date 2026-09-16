@@ -129,7 +129,7 @@ function compile.term.cycle_split()
 		compile.opts.term_win_opts.split = target.split_opt
 	end
 
-	vim.notify("CompileMode: Split aligned to " .. target.name, vim.log.levels.INFO)
+	vim.notify("Run: Split aligned to " .. target.name, vim.log.levels.INFO)
 end
 
 local function is_windows_os()

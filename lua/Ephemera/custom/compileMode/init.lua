@@ -257,7 +257,7 @@ end
 --- Enables watch mode (auto-compile on buffer save).
 function compile.enable_watch()
 	compile.state.watch_enabled = true
-	local group = vim.api.nvim_create_augroup("CompileModeWatch", { clear = true })
+	local group = vim.api.nvim_create_augroup("RunWatch", { clear = true })
 	vim.api.nvim_create_autocmd("BufWritePost", {
 		group = group,
 		callback = function()
@@ -271,17 +271,17 @@ end
 --- Disables watch mode.
 function compile.disable_watch()
 	compile.state.watch_enabled = false
-	pcall(vim.api.nvim_del_augroup_by_name, "CompileModeWatch")
+	pcall(vim.api.nvim_del_augroup_by_name, "RunWatch")
 end
 
 --- Toggle watch mode: automatically re-runs last compile command whenever a file is saved.
 function compile.toggle_watch()
 	if compile.state.watch_enabled then
 		compile.disable_watch()
-		vim.notify("CompileMode: Watch mode DISABLED", vim.log.levels.INFO)
+		vim.notify("Watch mode: DISABLED", vim.log.levels.INFO)
 	else
 		compile.enable_watch()
-		vim.notify("CompileMode: Watch mode ENABLED (auto-compile on save)", vim.log.levels.INFO)
+		vim.notify("Watch mode: ENABLED (auto-compile on save)", vim.log.levels.INFO)
 		if compile.state.last_cmd then
 			compile.compile(compile.state.last_cmd)
 		end
@@ -291,7 +291,7 @@ end
 --- Exports all parsed compilation errors into Neovim's native Quickfix list.
 function compile.export_to_qf()
 	if not compile.highlight.has_warnings() then
-		vim.notify("CompileMode: No errors/warnings to export to Quickfix list", vim.log.levels.WARN)
+		vim.notify("Run: No errors/warnings to export", vim.log.levels.WARN)
 		return
 	end
 
@@ -310,9 +310,9 @@ function compile.export_to_qf()
 	end
 
 	vim.fn.setqflist(qf_list, "r")
-	vim.fn.setqflist({}, "a", { title = "Compile: " .. (compile.state.last_cmd or "Build") })
+	vim.fn.setqflist({}, "a", { title = "Run: " .. (compile.state.last_cmd or "Build") })
 	vim.cmd("copen")
-	vim.notify(string.format("CompileMode: Exported %d error(s) to Quickfix list", #qf_list), vim.log.levels.INFO)
+	vim.notify(string.format("Exported %d error(s) to Quickfix", #qf_list), vim.log.levels.INFO)
 end
 
 --- Compiles the project and captures errors in the terminal.
@@ -343,7 +343,7 @@ function compile.compile(cmd, cwd)
 		if compile.state.watch_enabled then
 			vim.api.nvim_chan_send(
 				compile.term.state.channel,
-				"echo -e '\\033[1;36m[CompileMode: Terminal is in WATCH MODE (auto-recompiling on save)]\\033[0m'"
+				"echo -e '\\033[1;36m[WATCH MODE: Auto-recompiling on save]\\033[0m'"
 					.. terminator
 			)
 		end
