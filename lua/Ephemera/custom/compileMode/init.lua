@@ -213,23 +213,78 @@ function compile.recompile_file_dir()
 	end
 end
 
+local function prompt_save_modified_buffers()
+	local modified_bufs = vim.tbl_filter(function(b)
+		return vim.api.nvim_buf_is_valid(b)
+			and vim.api.nvim_get_option_value("modified", { buf = b })
+			and vim.api.nvim_get_option_value("buftype", { buf = b }) == ""
+			and vim.api.nvim_buf_get_name(b) ~= ""
+	end, vim.api.nvim_list_bufs())
+
+	if #modified_bufs > 0 then
+		local choice = vim.fn.confirm(
+			string.format("Save %d modified buffer(s) before compiling?", #modified_bufs),
+			"&Yes\n&No",
+			1
+		)
+		if choice == 1 then
+			vim.cmd("silent! wall")
+		end
+	end
+end
+
+--- Prompt for a compile command and directly launch it in watch mode (Alt-F6).
+function compile.compile_watch_prompt()
+	local dir_display = format_truncated_path(vim.fn.getcwd())
+	local default_hint = detect_project_command(vim.fn.getcwd()) or (compile.state.last_cmd or "")
+	local prompt_text = string.format("[%s] (Watch) Run: ", dir_display)
+	local cmd = vim.fn.input({
+		prompt = prompt_text,
+		completion = "customlist,v:lua.Ephemera_compile_complete",
+	})
+	if not cmd or cmd:len() == 0 then
+		if default_hint ~= "" then
+			cmd = default_hint
+		else
+			return
+		end
+	end
+
+	compile.enable_watch()
+	compile.compile(cmd)
+end
+
+--- Enables watch mode (auto-compile on buffer save).
+function compile.enable_watch()
+	compile.state.watch_enabled = true
+	local group = vim.api.nvim_create_augroup("CompileModeWatch", { clear = true })
+	vim.api.nvim_create_autocmd("BufWritePost", {
+		group = group,
+		callback = function()
+			if compile.state.last_cmd then
+				compile.compile(compile.state.last_cmd)
+			end
+		end,
+	})
+end
+
+--- Disables watch mode.
+function compile.disable_watch()
+	compile.state.watch_enabled = false
+	pcall(vim.api.nvim_del_augroup_by_name, "CompileModeWatch")
+end
+
 --- Toggle watch mode: automatically re-runs last compile command whenever a file is saved.
 function compile.toggle_watch()
-	compile.state.watch_enabled = not (compile.state.watch_enabled or false)
 	if compile.state.watch_enabled then
-		local group = vim.api.nvim_create_augroup("CompileModeWatch", { clear = true })
-		vim.api.nvim_create_autocmd("BufWritePost", {
-			group = group,
-			callback = function()
-				if compile.state.last_cmd then
-					compile.compile(compile.state.last_cmd)
-				end
-			end,
-		})
-		vim.notify("CompileMode: Watch mode ENABLED (auto-compile on save)", vim.log.levels.INFO)
-	else
-		pcall(vim.api.nvim_del_augroup_by_name, "CompileModeWatch")
+		compile.disable_watch()
 		vim.notify("CompileMode: Watch mode DISABLED", vim.log.levels.INFO)
+	else
+		compile.enable_watch()
+		vim.notify("CompileMode: Watch mode ENABLED (auto-compile on save)", vim.log.levels.INFO)
+		if compile.state.last_cmd then
+			compile.compile(compile.state.last_cmd)
+		end
 	end
 end
 
@@ -261,12 +316,12 @@ function compile.export_to_qf()
 end
 
 --- Compiles the project and captures errors in the terminal.
---- Auto-saves modified buffers beforehand and tracks build duration.
+--- Prompts to save modified buffers (if any), tracks build duration, and prints watch mode banner if active.
 ---@param cmd string The command to execute.
 ---@param cwd string|nil The working directory to execute the command in.
 function compile.compile(cmd, cwd)
-	-- Auto-save modified buffers before compiling
-	vim.cmd("silent! wall")
+	-- Prompt to save modified buffers (if any exist)
+	prompt_save_modified_buffers()
 
 	compile.state.last_cmd = cmd
 	compile.state.start_time = vim.loop.hrtime()
@@ -285,6 +340,13 @@ function compile.compile(cmd, cwd)
 		end
 		-- wipe shell startup output (fastfetch, prompt) before running
 		vim.api.nvim_chan_send(compile.term.state.channel, "clear" .. terminator)
+		if compile.state.watch_enabled then
+			vim.api.nvim_chan_send(
+				compile.term.state.channel,
+				"echo -e '\\033[1;36m[CompileMode: Terminal is in WATCH MODE (auto-recompiling on save)]\\033[0m'"
+					.. terminator
+			)
+		end
 		compile.term.send_cmd(cmd)
 	end)
 end

@@ -65,6 +65,8 @@ return {
 				["<F17>"] = "require('Ephemera.custom.compileMode').recompile_file_dir()",
 				["<S-F6>"] = "require('Ephemera.custom.compileMode').compile_prompt_file_dir()",
 				["<F18>"] = "require('Ephemera.custom.compileMode').compile_prompt_file_dir()",
+				["<A-F6>"] = "require('Ephemera.custom.compileMode').compile_watch_prompt()",
+				["<M-F6>"] = "require('Ephemera.custom.compileMode').compile_watch_prompt()",
 			},
 		},
 		term = {

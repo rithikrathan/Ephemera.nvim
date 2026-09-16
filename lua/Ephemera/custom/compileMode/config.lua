@@ -171,6 +171,9 @@
                         ["<F17>"] = "require('Ephemera.custom.compileMode').recompile_file_dir()",
                         ["<S-F6>"] = "require('Ephemera.custom.compileMode').compile_prompt_file_dir()",
                         ["<F18>"] = "require('Ephemera.custom.compileMode').compile_prompt_file_dir()",
+                        -- Alt-F6: compile prompt directly launching in watch mode
+                        ["<A-F6>"] = "require('Ephemera.custom.compileMode').compile_watch_prompt()",
+                        ["<M-F6>"] = "require('Ephemera.custom.compileMode').compile_watch_prompt()",
                     },
                 },
                 term = {
