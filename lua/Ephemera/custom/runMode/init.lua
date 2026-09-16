@@ -1,9 +1,9 @@
 -- =============================================================================
--- compileMode -- Fork of pohlrabi404/compile.nvim
+-- runMode -- Fork of pohlrabi404/compile.nvim
 -- Original: https://github.com/pohlrabi404/compile.nvim
 -- License: MIT
 -- Modified by: Ephemera (Rithik)
-
+--
 -- TODO:
 --  - Linkers / build-system errors often output NO file path (ex: "undefined
 --    reference"). Add a fallback: hop to first warning / current file when a
@@ -17,15 +17,15 @@ local compile = {}
 
 -- Last command used, persisted across sessions via shada (vim.g)
 compile.state = {
-	last_cmd = vim.g.compileMode_last_cmd,
+	last_cmd = vim.g.runMode_last_cmd or vim.g.compileMode_last_cmd,
 }
 
 -- Load submodules
-compile.term = require("Ephemera.custom.compileMode.term")
-compile.utils = require("Ephemera.custom.compileMode.utils")
-compile.highlight = require("Ephemera.custom.compileMode.highlight")
-compile.keymaps = require("Ephemera.custom.compileMode.keymaps")
-compile.opts = require("Ephemera.custom.compileMode.opts")
+compile.term = require("Ephemera.custom.runMode.term")
+compile.utils = require("Ephemera.custom.runMode.utils")
+compile.highlight = require("Ephemera.custom.runMode.highlight")
+compile.keymaps = require("Ephemera.custom.runMode.keymaps")
+compile.opts = require("Ephemera.custom.runMode.opts")
 
 --- Clears the terminal and reinitializes it.
 --- This function effectively resets the compiler environment, removing any previous output and preparing it for a new compilation run.
@@ -155,7 +155,6 @@ end
 --- Empty input / cancel does nothing and never touches last_cmd.
 function compile.compile_prompt()
 	local dir_display = format_truncated_path(vim.fn.getcwd())
-	local default_hint = detect_project_command(vim.fn.getcwd()) or ""
 	local prompt_text = string.format("[%s] Run: ", dir_display)
 	local cmd = vim.fn.input({
 		prompt = prompt_text,
@@ -163,52 +162,59 @@ function compile.compile_prompt()
 	})
 	if cmd and cmd:len() > 0 then
 		compile.compile(cmd)
-	elseif cmd and cmd == "" and default_hint ~= "" then
-		compile.compile(default_hint)
 	end
 end
 
---- Prompt for a compile command and run it in the directory of the currently open file (Shift-F6).
+--- Prompt for a compile command (always starts empty) and run it in the directory of the currently open file (Shift-F6).
 function compile.compile_prompt_file_dir()
 	local file_dir = get_current_file_dir()
 	local dir_display = format_truncated_path(file_dir)
-	local default_hint = detect_project_command(file_dir) or ""
 	local cmd = vim.fn.input({
 		prompt = string.format("[%s] Run: ", dir_display),
 		completion = "customlist,v:lua.Ephemera_compile_complete_file_dir",
 	})
 	if cmd and cmd:len() > 0 then
 		compile.compile(cmd, file_dir)
-	elseif cmd and cmd == "" and default_hint ~= "" then
-		compile.compile(default_hint, file_dir)
 	end
 end
 
---- Re-run the last compile command in project root (cwd); if none exists yet, prompt instead.
+--- Re-run the last compile command in project root (cwd).
+--- If none exists yet (F5), autodetects the build tool, prefills the prompt with it, and asks the user (never auto-runs).
 function compile.recompile()
-	if compile.state.last_cmd then
+	if compile.state.last_cmd and compile.state.last_cmd ~= "" then
 		compile.compile(compile.state.last_cmd)
 	else
-		local detected = detect_project_command(vim.fn.getcwd())
-		if detected then
-			compile.compile(detected)
-		else
-			compile.compile_prompt()
+		local detected = detect_project_command(vim.fn.getcwd()) or ""
+		local dir_display = format_truncated_path(vim.fn.getcwd())
+		local prompt_text = string.format("[%s] Run: ", dir_display)
+		local cmd = vim.fn.input({
+			prompt = prompt_text,
+			default = detected,
+			completion = "customlist,v:lua.Ephemera_compile_complete",
+		})
+		if cmd and cmd:len() > 0 then
+			compile.compile(cmd)
 		end
 	end
 end
 
---- Re-run the last compile command in current file directory (Shift-F5); if none exists yet, prompt instead.
+--- Re-run the last compile command in current file directory (Shift-F5).
+--- If none exists yet, autodetects the build tool in file dir, prefills the prompt, and asks the user (never auto-runs).
 function compile.recompile_file_dir()
 	local file_dir = get_current_file_dir()
-	if compile.state.last_cmd then
+	if compile.state.last_cmd and compile.state.last_cmd ~= "" then
 		compile.compile(compile.state.last_cmd, file_dir)
 	else
-		local detected = detect_project_command(file_dir)
-		if detected then
-			compile.compile(detected, file_dir)
-		else
-			compile.compile_prompt_file_dir()
+		local detected = detect_project_command(file_dir) or ""
+		local dir_display = format_truncated_path(file_dir)
+		local prompt_text = string.format("[%s] Run: ", dir_display)
+		local cmd = vim.fn.input({
+			prompt = prompt_text,
+			default = detected,
+			completion = "customlist,v:lua.Ephemera_compile_complete_file_dir",
+		})
+		if cmd and cmd:len() > 0 then
+			compile.compile(cmd, file_dir)
 		end
 	end
 end
@@ -236,22 +242,15 @@ end
 --- Prompt for a compile command and directly launch it in watch mode (Alt-F6).
 function compile.compile_watch_prompt()
 	local dir_display = format_truncated_path(vim.fn.getcwd())
-	local default_hint = detect_project_command(vim.fn.getcwd()) or (compile.state.last_cmd or "")
 	local prompt_text = string.format("[%s] (Watch) Run: ", dir_display)
 	local cmd = vim.fn.input({
 		prompt = prompt_text,
 		completion = "customlist,v:lua.Ephemera_compile_complete",
 	})
-	if not cmd or cmd:len() == 0 then
-		if default_hint ~= "" then
-			cmd = default_hint
-		else
-			return
-		end
+	if cmd and cmd:len() > 0 then
+		compile.enable_watch()
+		compile.compile(cmd)
 	end
-
-	compile.enable_watch()
-	compile.compile(cmd)
 end
 
 --- Enables watch mode (auto-compile on buffer save).
@@ -315,6 +314,60 @@ function compile.export_to_qf()
 	vim.notify(string.format("Exported %d error(s) to Quickfix", #qf_list), vim.log.levels.INFO)
 end
 
+--- Called when the compilation process finishes executing in the terminal.
+--- Computes duration, prints Emacs-style echo in the command line,
+--- and performs auto-jump to first error (if failed) or autoscroll to end (if succeeded).
+--- Includes [Watch] in the done message if executed in watch mode.
+---@param exit_code number Process exit status code.
+function compile.on_compile_done(exit_code)
+	compile.state.done_handled = true
+	compile.state.running = false
+	compile.state.exit_code = exit_code
+	local elapsed_ns = vim.loop.hrtime() - (compile.state.start_time or vim.loop.hrtime())
+	local duration = elapsed_ns / 1e9
+	compile.state.duration = duration
+	local dur_str = string.format("%.2fs", duration)
+	local time_str = os.date("%H:%M:%S")
+
+	local err_count = (compile.highlight.state and compile.highlight.state.warning_index and #compile.highlight.state.warning_index) or 0
+	local cmd_str = compile.state.last_cmd or "Build"
+	local mode_label = compile.state.watch_enabled and "Watch" or "Run"
+
+	-- Emacs-style command-line echo (includes [Watch] or [Run])
+	local echo_chunks = {}
+	if exit_code == 0 and err_count == 0 then
+		table.insert(
+			echo_chunks,
+			{ string.format("✓ [%s] Succeeded in %s at %s (0 errors) • ", mode_label, dur_str, time_str), "DiagnosticOk" }
+		)
+		table.insert(echo_chunks, { cmd_str, "Comment" })
+	else
+		local status_msg = string.format("✗ [%s] Exited with code %d in %s at %s ", mode_label, exit_code, dur_str, time_str)
+		table.insert(echo_chunks, { status_msg, "DiagnosticError" })
+		table.insert(echo_chunks, { string.format("(%d error%s) • ", err_count, err_count == 1 and "" or "s"), "DiagnosticWarn" })
+		table.insert(echo_chunks, { cmd_str, "Comment" })
+	end
+
+	vim.schedule(function()
+		vim.api.nvim_echo(echo_chunks, false, {})
+		pcall(vim.cmd, "redrawstatus")
+
+		local term_win = compile.term.state.win
+		local term_buf = compile.term.state.buf
+
+		if err_count > 0 then
+			-- Auto-jump to first error and center preview in editor buffer (zz)
+			compile.first_error()
+		else
+			-- On clean success, autoscroll to the bottom of the terminal output
+			if vim.api.nvim_win_is_valid(term_win) and vim.api.nvim_buf_is_valid(term_buf) then
+				local line_count = vim.api.nvim_buf_line_count(term_buf)
+				pcall(vim.api.nvim_win_set_cursor, term_win, { line_count, 0 })
+			end
+		end
+	end)
+end
+
 --- Compiles the project and captures errors in the terminal.
 --- Prompts to save modified buffers (if any), tracks build duration, and prints watch mode banner if active.
 ---@param cmd string The command to execute.
@@ -324,8 +377,12 @@ function compile.compile(cmd, cwd)
 	prompt_save_modified_buffers()
 
 	compile.state.last_cmd = cmd
+	compile.state.running = true
+	compile.state.done_handled = false
+	compile.state.exit_code = nil
+	compile.state.duration = nil
 	compile.state.start_time = vim.loop.hrtime()
-	vim.g.compileMode_last_cmd = cmd
+	vim.g.runMode_last_cmd = cmd
 	compile.utils.enter_wrapper(function()
 		compile.term.destroy()
 		if compile.highlight.has_warnings() then
@@ -340,14 +397,19 @@ function compile.compile(cmd, cwd)
 		end
 		-- wipe shell startup output (fastfetch, prompt) before running
 		vim.api.nvim_chan_send(compile.term.state.channel, "clear" .. terminator)
+
 		if compile.state.watch_enabled then
 			vim.api.nvim_chan_send(
 				compile.term.state.channel,
-				"echo -e '\\033[1;36m[WATCH MODE: Auto-recompiling on save]\\033[0m'"
-					.. terminator
+				"echo -e '\\033[1;36m[WATCH MODE: Auto-recompiling on save]\\033[0m'" .. terminator
 			)
 		end
-		compile.term.send_cmd(cmd)
+
+		local wrapped_cmd = string.format(
+			"{ %s ; } ; printf '\\n\\033[90m── Finished (exit %%s) ──\\033[0m\\n\\033[8m__EPHEMERA_DONE__:%%s\\033[0m\\n' \"$?\" \"$?\"",
+			cmd
+		)
+		compile.term.send_cmd(wrapped_cmd)
 	end)
 end
 
@@ -359,8 +421,41 @@ function compile.destroy()
 	end)
 end
 
+local blink_ns = vim.api.nvim_create_namespace("RunBlinkNS")
+
+--- Flashes/blinks the target range in a buffer using the purple RunBlink highlight
+local function do_blink(buf, start_pos, end_pos, timeout)
+	if not buf or not vim.api.nvim_buf_is_valid(buf) then
+		return
+	end
+	timeout = timeout or 250
+
+	pcall(vim.api.nvim_buf_clear_namespace, buf, blink_ns, 0, -1)
+
+	local hl_func = (vim.hl and vim.hl.range) or (vim.highlight and vim.highlight.range)
+	if hl_func then
+		pcall(hl_func, buf, blink_ns, "RunBlink", start_pos, end_pos, { priority = 2000, timeout = timeout })
+	else
+		local ok, mark_id = pcall(vim.api.nvim_buf_set_extmark, buf, blink_ns, start_pos[1], start_pos[2], {
+			end_row = end_pos[1],
+			end_col = (end_pos[2] == -1) and nil or end_pos[2],
+			end_right_gravity = true,
+			hl_group = "RunBlink",
+			hl_eol = (end_pos[2] == -1),
+			priority = 2000,
+		})
+		if ok then
+			vim.defer_fn(function()
+				if vim.api.nvim_buf_is_valid(buf) then
+					pcall(vim.api.nvim_buf_del_extmark, buf, blink_ns, mark_id)
+				end
+			end, timeout)
+		end
+	end
+end
+
 --- Navigates to the current error location in the code.
---- Updates the editor buffer (centered with zz) and keeps cursor in terminal window if open.
+--- Updates the editor buffer (centered with zz), triggers visual purple blink, and keeps cursor in terminal window.
 function compile.goto_error()
 	local c_error = compile.highlight.get_current_warning()
 	if not c_error then
@@ -396,6 +491,10 @@ function compile.goto_error()
 
 		pcall(vim.api.nvim_win_set_cursor, win, { target_row, target_col })
 		vim.cmd("normal! zz")
+
+		-- Visual feedback: blink the error line in purple with contrast foreground
+		local t_timeout = (compile.opts and compile.opts.highlight_under_cursor and compile.opts.highlight_under_cursor.timeout_normal) or 250
+		do_blink(buf, { target_row - 1, 0 }, { target_row - 1, -1 }, t_timeout)
 	end)
 
 	-- Update terminal cursor to the error line and keep focus in terminal window
@@ -407,28 +506,10 @@ function compile.goto_error()
 		local t_col = math.max(0, c_error.file.pos[1][2] or 0)
 		pcall(vim.api.nvim_win_set_cursor, term_win, { t_row, t_col })
 		vim.api.nvim_set_current_win(term_win)
-	end
 
-	if compile.opts.highlight_under_cursor.enabled then
-		pcall(function()
-			vim.hl.range(
-				compile.term.state.buf,
-				compile.highlight.ns,
-				"Cursor",
-				c_error.file.pos[1],
-				c_error.file.pos[2],
-				{ priority = 2000, timeout = compile.opts.highlight_under_cursor.timeout_term }
-			)
-
-			vim.hl.range(
-				vim.api.nvim_win_get_buf(win),
-				compile.highlight.ns,
-				"Cursor",
-				{ c_error.row.val - 1, 0 },
-				{ c_error.row.val - 1, -1 },
-				{ priority = 2000, timeout = compile.opts.highlight_under_cursor.timeout_normal }
-			)
-		end)
+		-- Visual feedback: blink the error token in the terminal window
+		local t_term_timeout = (compile.opts and compile.opts.highlight_under_cursor and compile.opts.highlight_under_cursor.timeout_term) or 300
+		do_blink(term_buf, c_error.file.pos[1], c_error.file.pos[2], t_term_timeout)
 	end
 end
 

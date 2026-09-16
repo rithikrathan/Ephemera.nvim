@@ -1,5 +1,5 @@
 -- =============================================================================
--- compileMode -- Fork of pohlrabi404/compile.nvim
+-- runMode -- Fork of pohlrabi404/compile.nvim
 -- Original: https://github.com/pohlrabi404/compile.nvim
 -- License: MIT
 -- Modified by: Ephemera (Rithik)
@@ -7,7 +7,7 @@
 local compile = {}
 compile.term = {}
 
-compile.opts = require("Ephemera.custom.compileMode.opts")
+compile.opts = require("Ephemera.custom.runMode.opts")
 
 compile.term.state = {
 	buf = -1,
@@ -17,6 +17,7 @@ compile.term.state = {
 	warning_list = {},
 	warning_index = {},
 	current_warning = 0,
+	split_idx = 4, -- defaults to 4 (bottom) on startup
 }
 
 local opts = {}
@@ -26,10 +27,35 @@ function compile.term.setup(o)
 	opts = o
 end
 
+local split_cycle = {
+	{ name = "right", cmd = "wincmd L", resize = function(w) vim.api.nvim_win_set_width(w, math.floor(vim.o.columns * 0.45)) end, split_opt = "right" },
+	{ name = "top", cmd = "wincmd K", resize = function(w) vim.api.nvim_win_set_height(w, math.floor(vim.o.lines * 0.4)) end, split_opt = "above" },
+	{ name = "left", cmd = "wincmd H", resize = function(w) vim.api.nvim_win_set_width(w, math.floor(vim.o.columns * 0.45)) end, split_opt = "left" },
+	{ name = "bottom", cmd = "wincmd J", resize = function(w) vim.api.nvim_win_set_height(w, math.floor(vim.o.lines * 0.4)) end, split_opt = "below" },
+}
+
+--- Returns win_opts conforming to the current session's cycled split orientation
+function compile.term.get_win_opts()
+	local idx = compile.term.state.split_idx or 4
+	local target = split_cycle[idx] or split_cycle[4]
+	if target.split_opt == "right" or target.split_opt == "left" then
+		return {
+			split = target.split_opt,
+			width = math.floor(vim.o.columns * 0.45),
+		}
+	else
+		return {
+			split = target.split_opt,
+			height = math.floor(vim.o.lines * 0.4),
+		}
+	end
+end
+
 --- Initialize terminal buffer and window
 function compile.term.init()
 	compile.term.state.buf = vim.api.nvim_create_buf(false, true)
-	compile.term.state.win = vim.api.nvim_open_win(compile.term.state.buf, true, opts.term_win_opts)
+	local win_opts = compile.term.get_win_opts()
+	compile.term.state.win = vim.api.nvim_open_win(compile.term.state.buf, true, win_opts)
 	vim.cmd("term")
 	if compile.opts.hidden then
 		vim.api.nvim_set_option_value("buflisted", false, { scope = "local", buf = compile.term.state.buf })
@@ -50,7 +76,9 @@ function compile.term.show()
 	end
 
 	if vim.api.nvim_buf_is_valid(compile.term.state.buf) then
-		compile.term.state.win = vim.api.nvim_open_win(compile.term.state.buf, true, opts.term_win_opts)
+		local win_opts = compile.term.get_win_opts()
+		compile.term.state.win = vim.api.nvim_open_win(compile.term.state.buf, true, win_opts)
+		vim.api.nvim_set_option_value("wrap", false, { scope = "local", win = compile.term.state.win })
 	else
 		compile.term.init()
 	end
@@ -85,7 +113,7 @@ end
 --- Toggle terminal visibility (show and focus, or hide and focus normal editor window)
 function compile.term.toggle()
 	if vim.api.nvim_win_is_valid(compile.term.state.win) then
-		local normal_win = require("Ephemera.custom.compileMode.utils").get_normal_win()
+		local normal_win = require("Ephemera.custom.runMode.utils").get_normal_win()
 		compile.term.hide()
 		if normal_win and vim.api.nvim_win_is_valid(normal_win) then
 			vim.api.nvim_set_current_win(normal_win)
@@ -97,13 +125,6 @@ function compile.term.toggle()
 		end
 	end
 end
-
-local split_cycle = {
-	{ name = "right", cmd = "wincmd L", resize = function(w) vim.api.nvim_win_set_width(w, math.floor(vim.o.columns * 0.45)) end, split_opt = "right" },
-	{ name = "top", cmd = "wincmd K", resize = function(w) vim.api.nvim_win_set_height(w, math.floor(vim.o.lines * 0.4)) end, split_opt = "above" },
-	{ name = "left", cmd = "wincmd H", resize = function(w) vim.api.nvim_win_set_width(w, math.floor(vim.o.columns * 0.45)) end, split_opt = "left" },
-	{ name = "bottom", cmd = "wincmd J", resize = function(w) vim.api.nvim_win_set_height(w, math.floor(vim.o.lines * 0.4)) end, split_opt = "below" },
-}
 
 --- Cycles compilation split window alignment (bottom -> right -> top -> left)
 --- Keeps text wrapping explicitly OFF for accurate regex parsing.
@@ -174,7 +195,23 @@ function compile.term.attach_event()
 				first_line = compile.term.state.last_line
 			end
 			local lines = vim.api.nvim_buf_get_lines(compile.term.state.buf, first_line, last_line, false)
-			require("Ephemera.custom.compileMode.highlight").process_lines(lines, first_line)
+			require("Ephemera.custom.runMode.highlight").process_lines(lines, first_line)
+
+			local compile_mod = require("Ephemera.custom.runMode")
+
+			-- Autoscroll terminal window down while running
+			if compile_mod.state.running and vim.api.nvim_win_is_valid(compile.term.state.win) then
+				pcall(vim.api.nvim_win_set_cursor, compile.term.state.win, { last_line, 0 })
+			end
+
+			-- Check for process completion sentinel
+			for _, line in ipairs(lines) do
+				local exit_code = line:match("__EPHEMERA_DONE__:(%d+)")
+				if exit_code and not compile_mod.state.done_handled then
+					compile_mod.on_compile_done(tonumber(exit_code))
+					break
+				end
+			end
 		end,
 	})
 end

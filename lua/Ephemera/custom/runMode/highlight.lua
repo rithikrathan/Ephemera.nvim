@@ -1,5 +1,5 @@
 -- =============================================================================
--- compileMode -- Fork of pohlrabi404/compile.nvim
+-- runMode -- Fork of pohlrabi404/compile.nvim
 -- Original: https://github.com/pohlrabi404/compile.nvim
 -- License: MIT
 -- Modified by: Ephemera (Rithik)
@@ -20,12 +20,18 @@ local opts = {}
 --- Initialize highlight module
 function compile.highlight.setup(o)
 	opts = o
+	vim.api.nvim_set_hl(0, "RunBlink", {
+		bg = "#43205e", -- Dim purple background
+		fg = "#f5e8ff", -- High-contrast soft character foreground
+		bold = true,
+		default = true,
+	})
 end
 
 --- Clear all warning highlights
 function compile.highlight.clear_hl_warning()
-	if vim.api.nvim_buf_is_valid(require("Ephemera.custom.compileMode.term").state.buf) then
-		vim.api.nvim_buf_clear_namespace(require("Ephemera.custom.compileMode.term").state.buf, compile.highlight.ns, 0, -1)
+	if vim.api.nvim_buf_is_valid(require("Ephemera.custom.runMode.term").state.buf) then
+		vim.api.nvim_buf_clear_namespace(require("Ephemera.custom.runMode.term").state.buf, compile.highlight.ns, 0, -1)
 	end
 	compile.highlight.state.warning_list = {}
 	compile.highlight.state.warning_index = {}
@@ -93,8 +99,8 @@ end
 -- Process new terminal lines for warnings
 local function highlight_extract(location_pattern, lines, first_line)
 	local pattern = location_pattern[1]
-	local positions = require("Ephemera.custom.compileMode.utils").split_to_num(location_pattern[2])
-	local term_buf = require("Ephemera.custom.compileMode.term").state.buf
+	local positions = require("Ephemera.custom.runMode.utils").split_to_num(location_pattern[2])
+	local term_buf = require("Ephemera.custom.runMode.term").state.buf
 
 	if #positions == 2 then
 		for index, line in ipairs(lines) do

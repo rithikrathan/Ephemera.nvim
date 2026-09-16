@@ -16,7 +16,7 @@ require("Ephemera.pluginConfig")           -- Global pluginConfigs
 require("Ephemera.commands")               -- Autocommands and user defined commands
 require("Ephemera.custom.tabBar").setup()  -- floating tab sidebar
 require("Ephemera.custom.buffer").setup()  -- scratchpad, notepad, reference
-require("Ephemera.custom.compileMode.config") -- compileMode (vendored fork)
+require("Ephemera.custom.runMode.config") -- runMode (vendored fork)
 
 -- global variables
 vim.g.use_git_plugins = false

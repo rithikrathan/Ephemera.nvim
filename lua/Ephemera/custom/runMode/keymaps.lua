@@ -1,5 +1,5 @@
 -- =============================================================================
--- compileMode -- Fork of pohlrabi404/compile.nvim
+-- runMode -- Fork of pohlrabi404/compile.nvim
 -- Original: https://github.com/pohlrabi404/compile.nvim
 -- License: MIT
 -- Modified by: Ephemera (Rithik)
@@ -14,7 +14,7 @@ function compile.keymaps.setup(opts)
 	-- Global keymaps
 	for modes, keymap in pairs(opts.keys.global) do
 		for key, cmd in pairs(keymap) do
-			vim.keymap.set(require("Ephemera.custom.compileMode.utils").split_to_char(modes), key, function()
+			vim.keymap.set(require("Ephemera.custom.runMode.utils").split_to_char(modes), key, function()
 				compile.keymaps.load(cmd)
 			end, { silent = true })
 		end
@@ -24,7 +24,7 @@ function compile.keymaps.setup(opts)
 	vim.api.nvim_create_autocmd("BufCreate", {
 		group = term_group,
 		callback = function(ev)
-			local term_buf = require("Ephemera.custom.compileMode.term").state.buf
+			local term_buf = require("Ephemera.custom.runMode.term").state.buf
 			if ev.buf ~= term_buf then
 				return
 			end
@@ -32,7 +32,7 @@ function compile.keymaps.setup(opts)
 			-- Global terminal keymaps
 			for modes, keymap in pairs(opts.keys.term.global) do
 				for key, cmd in pairs(keymap) do
-					vim.keymap.set(require("Ephemera.custom.compileMode.utils").split_to_char(modes), key, function()
+					vim.keymap.set(require("Ephemera.custom.runMode.utils").split_to_char(modes), key, function()
 						compile.keymaps.load(cmd)
 					end, { silent = true })
 				end
@@ -41,7 +41,7 @@ function compile.keymaps.setup(opts)
 			-- Buffer-local keymaps
 			for modes, keymap in pairs(opts.keys.term.buffer) do
 				for key, cmd in pairs(keymap) do
-					vim.keymap.set(require("Ephemera.custom.compileMode.utils").split_to_char(modes), key, function()
+					vim.keymap.set(require("Ephemera.custom.runMode.utils").split_to_char(modes), key, function()
 						compile.keymaps.load(cmd)
 					end, { buffer = ev.buf, silent = true })
 				end
@@ -53,7 +53,7 @@ function compile.keymaps.setup(opts)
 	vim.api.nvim_create_autocmd("BufDelete", {
 		group = term_group,
 		callback = function(ev)
-			if ev.buf == require("Ephemera.custom.compileMode.term").state.buf then
+			if ev.buf == require("Ephemera.custom.runMode.term").state.buf then
 				for modes, keymap in pairs(opts.keys.term.global) do
 					for key in pairs(keymap) do
 						pcall(vim.keymap.del, modes, key, { buffer = false })

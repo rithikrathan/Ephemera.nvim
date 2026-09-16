@@ -1,5 +1,5 @@
 -- =============================================================================
--- compileMode -- Fork of pohlrabi404/compile.nvim
+-- runMode -- Fork of pohlrabi404/compile.nvim
 -- Original: https://github.com/pohlrabi404/compile.nvim
 -- License: MIT
 -- Modified by: Ephemera (Rithik)
@@ -11,7 +11,7 @@ compile.utils = {}
 function compile.utils.enter_wrapper(func)
 	local current_win = vim.api.nvim_get_current_win()
 	func()
-	if (not require("Ephemera.custom.compileMode").opts.enter) and vim.api.nvim_win_is_valid(current_win) then
+	if (not require("Ephemera.custom.runMode").opts.enter) and vim.api.nvim_win_is_valid(current_win) then
 		vim.api.nvim_set_current_win(current_win)
 	end
 end
@@ -36,8 +36,8 @@ end
 
 --- Get valid non-terminal window
 function compile.utils.get_normal_win()
-	local term_win = require("Ephemera.custom.compileMode.term").state.win
-	local current_warning = require("Ephemera.custom.compileMode.highlight").get_current_warning()
+	local term_win = require("Ephemera.custom.runMode.term").state.win
+	local current_warning = require("Ephemera.custom.runMode.highlight").get_current_warning()
 	local warning_filename = (current_warning and current_warning.file and current_warning.file.val) or ""
 
 	local function endsWith(str, suffix)
@@ -69,7 +69,7 @@ function compile.utils.get_normal_win()
 
 	-- 3. Create new window if none found
 	local buf = vim.api.nvim_create_buf(true, false)
-	local win = vim.api.nvim_open_win(buf, false, require("Ephemera.custom.compileMode").opts.normal_win_opts)
+	local win = vim.api.nvim_open_win(buf, false, require("Ephemera.custom.runMode").opts.normal_win_opts)
 	vim.api.nvim_set_option_value("number", true, { win = win })
 	return win
 end

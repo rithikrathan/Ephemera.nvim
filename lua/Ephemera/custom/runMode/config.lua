@@ -1,4 +1,4 @@
-        local compile = require("Ephemera.custom.compileMode")
+        local compile = require("Ephemera.custom.runMode")
 
         compile.setup({
             -- Give your terminal a custom name.
@@ -27,23 +27,68 @@
             enter = true,
 
             highlight_under_cursor = {
-                -- Enable or disable highlighting the error under your cursor. It’s a great visual cue!
-                enabled = false,
+                -- Enable highlighting / purple visual blink on error navigation (v, n, p, f, l)
+                enabled = true,
                 -- The timeout in milliseconds for the highlight to appear in the terminal.
-                timeout_term = 500,
+                timeout_term = 300,
                 -- The timeout in milliseconds for the highlight in a normal buffer.
-                timeout_normal = 200,
+                timeout_normal = 250,
             },
 
             patterns = {
                 -- patterns = { lua_pattern, capture_order }
                 -- capture_order: "123" = file,col,row ; "12" = file,row ; "21" = row,file
-                -- sources: vim errorformat collections, nvim-lint, como.nvim, overseer.nvim,
-                --          smol-tool parsers, VS Code problem matchers, emacs compile.el,
-                --          github.com/hegner123/errs, github.com/josephch/compiler-output-parser
+
+                -- Ripgrep / Ag / Ack / Git Grep with Column (file:line:col:)
+                rg = { "(%S+):(%d+):(%d+):", "123" },
+
+                -- Ripgrep / Grep -n / Git Grep -n / Standard Line Match (file:line:)
+                grep = { "(%S+):(%d+):", "12" },
+
+                -- ctags -x output (name kind line file def)
+                ctags_x = { "^%S+%s+[%w_]+%s+(%d+)%s+(%S+)", "21" },
+
+                -- ctags tags file (name \t file \t line;" \t kind)
+                ctags_tags = { "^%S+%s+(%S+)%s+(%d+);\"", "12" },
+
+                -- ShellCheck (bash / sh linter)
+                shellcheck = { "In (%S+) line (%d+):", "12" },
+
+                -- GDB / LLDB backtrace (#0 main () at main.c:14)
+                gdb = { "at (%S+%.%a+):(%d+)", "12" },
+
+                -- Valgrind / Memcheck (==12345== at 0x4005B6: main (src/main.c:12))
+                valgrind_at = { "at 0x%x+: %S+ %((%S+):(%d+)%)", "12" },
+                valgrind_by = { "by 0x%x+: %S+ %((%S+):(%d+)%)", "12" },
+                valgrind_direct = { "at 0x%x+: (%S+):(%d+)", "12" },
+
+                -- Cppcheck ([src/main.cpp:12]: (error) ...)
+                cppcheck = { "%[(%S+):(%d+)%]:", "12" },
+
+                -- Python pytest / traceback
+                pytest = { "(%S+%.py):(%d+): in ", "12" },
+                python = { 'File "(%S+%.%a+)", line (%d+)', "12" },
+
+                -- Node.js / V8 / Jest / Vitest stacktraces
+                v8_stack = { "at .-%((%S+):(%d+):(%d+)%)", "123" },
+                v8_direct = { "at (%S+):(%d+):(%d+)", "123" },
+
+                -- Rust Backtrace (RUST_BACKTRACE=1) / Cargo
+                rust_backtrace = { "at (%S+%.rs):(%d+):(%d+)", "123" },
+                rust = { "%-%-> (%S+):(%d+):(%d+)", "123" },
+
+                -- Go Panic / Test Stacktrace
+                go_panic = { "(%S+%.go):(%d+) %+0x", "12" },
+                go = { "(%S+%.%a+):(%d+):(%d+):", "123" },
+
+                -- Ruby / RuboCop stacktrace
+                ruby_stack = { "from (%S+%.rb):(%d+):in", "12" },
+
+                -- PHP / PHPStan
+                phpstan = { "(%S+%.php):(%d+)", "12" },
+                php_fatal = { "in (%S+%.php) on line (%d+)", "12" },
 
                 -- GCC / Clang / arm-none-eabi-gcc / Android NDK (file:line:col:)
-                -- covers C, C++, Arduino, PlatformIO, Objective-C, Zig, Scala, Fortran (gfortran), Kotlin (ktc), Dart
                 gcc = { "(%S+):(%d+):(%d+)", "123" },
 
                 -- Rust: error[E0423] --> src/main.rs:4:5
@@ -158,22 +203,22 @@
                     -- eg: ["nvi"] for normal, select and insert mode keybinding
                     ["n"] = {
                         -- toggle compilation window (show+focus or hide+unfocus)
-                        ["<localleader>c"] = "require('Ephemera.custom.compileMode').term.toggle()",
+                        ["<localleader>c"] = "require('Ephemera.custom.runMode').term.toggle()",
                         -- toggle watch mode (auto-compile on save)
-                        ["<localleader>cw"] = "require('Ephemera.custom.compileMode').toggle_watch()",
+                        ["<localleader>cw"] = "require('Ephemera.custom.runMode').toggle_watch()",
                         -- kill and close the compilation buffer
-                        ["<localleader>cx"] = "require('Ephemera.custom.compileMode').destroy()",
+                        ["<localleader>cx"] = "require('Ephemera.custom.runMode').destroy()",
                         -- Emacs-style compile: F5 reruns last command (prompts if none), F6 always prompts
-                        ["<F5>"] = "require('Ephemera.custom.compileMode').recompile()",
-                        ["<F6>"] = "require('Ephemera.custom.compileMode').compile_prompt()",
+                        ["<F5>"] = "require('Ephemera.custom.runMode').recompile()",
+                        ["<F6>"] = "require('Ephemera.custom.runMode').compile_prompt()",
                         -- Shift-F5 / Shift-F6: compile in directory of currently open file
-                        ["<S-F5>"] = "require('Ephemera.custom.compileMode').recompile_file_dir()",
-                        ["<F17>"] = "require('Ephemera.custom.compileMode').recompile_file_dir()",
-                        ["<S-F6>"] = "require('Ephemera.custom.compileMode').compile_prompt_file_dir()",
-                        ["<F18>"] = "require('Ephemera.custom.compileMode').compile_prompt_file_dir()",
+                        ["<S-F5>"] = "require('Ephemera.custom.runMode').recompile_file_dir()",
+                        ["<F17>"] = "require('Ephemera.custom.runMode').recompile_file_dir()",
+                        ["<S-F6>"] = "require('Ephemera.custom.runMode').compile_prompt_file_dir()",
+                        ["<F18>"] = "require('Ephemera.custom.runMode').compile_prompt_file_dir()",
                         -- Alt-F6: compile prompt directly launching in watch mode
-                        ["<A-F6>"] = "require('Ephemera.custom.compileMode').compile_watch_prompt()",
-                        ["<M-F6>"] = "require('Ephemera.custom.compileMode').compile_watch_prompt()",
+                        ["<A-F6>"] = "require('Ephemera.custom.runMode').compile_watch_prompt()",
+                        ["<M-F6>"] = "require('Ephemera.custom.runMode').compile_watch_prompt()",
                     },
                 },
                 term = {
@@ -183,34 +228,34 @@
                     global = {
                         ["n"] = {
                             -- clears the terminal
-                            ["<localleader>cr"] = "require('Ephemera.custom.compileMode').clear()",
+                            ["<localleader>cr"] = "require('Ephemera.custom.runMode').clear()",
                             -- quits the terminal buffer.
-                            ["<localleader>cq"] = "require('Ephemera.custom.compileMode').destroy()",
+                            ["<localleader>cq"] = "require('Ephemera.custom.runMode').destroy()",
                         },
                     },
                     -- This one will only work INSIDE the terminal buffer
                     buffer = {
                         ["n"] = {
-                            ["r"] = "require('Ephemera.custom.compileMode').clear()",
+                            ["r"] = "require('Ephemera.custom.runMode').clear()",
                             -- quit the terminal.
-                            ["q"] = "require('Ephemera.custom.compileMode').destroy()",
-                            ["w"] = "require('Ephemera.custom.compileMode').toggle_watch()",
-                            ["s"] = "require('Ephemera.custom.compileMode').term.cycle_split()",
-                            ["Q"] = "require('Ephemera.custom.compileMode').export_to_qf()",
-                            ["n"] = "require('Ephemera.custom.compileMode').next_error()",
-                            ["p"] = "require('Ephemera.custom.compileMode').prev_error()",
-                            ["f"] = "require('Ephemera.custom.compileMode').first_error()",
-                            ["l"] = "require('Ephemera.custom.compileMode').last_error()",
-                            ["v"] = "require('Ephemera.custom.compileMode').preview_nearest_error()",
+                            ["q"] = "require('Ephemera.custom.runMode').destroy()",
+                            ["w"] = "require('Ephemera.custom.runMode').toggle_watch()",
+                            ["s"] = "require('Ephemera.custom.runMode').term.cycle_split()",
+                            ["Q"] = "require('Ephemera.custom.runMode').export_to_qf()",
+                            ["n"] = "require('Ephemera.custom.runMode').next_error()",
+                            ["p"] = "require('Ephemera.custom.runMode').prev_error()",
+                            ["f"] = "require('Ephemera.custom.runMode').first_error()",
+                            ["l"] = "require('Ephemera.custom.runMode').last_error()",
+                            ["v"] = "require('Ephemera.custom.runMode').preview_nearest_error()",
                             -- Jump to the nearest error under or before your cursor and close term
-                            ["<Cr>"] = "require('Ephemera.custom.compileMode').nearest_error()",
+                            ["<Cr>"] = "require('Ephemera.custom.runMode').nearest_error()",
                         },
                         -- Tricks to clear warning/error list
                         ["t"] = {
                             -- Press `<CR>` in terminal mode to send a command and clear highlights.
-                            ["<CR>"] = "require('Ephemera.custom.compileMode').clear_hl()",
+                            ["<CR>"] = "require('Ephemera.custom.runMode').clear_hl()",
                             -- This sends the command to the terminal without clearing the error list!
-                            ["<C-j>"] = "require('Ephemera.custom.compileMode.term').send_cmd('')",
+                            ["<C-j>"] = "require('Ephemera.custom.runMode.term').send_cmd('')",
                         },
                     },
                 },
