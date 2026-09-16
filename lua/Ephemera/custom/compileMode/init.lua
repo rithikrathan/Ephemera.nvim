@@ -129,17 +129,42 @@ local function format_truncated_path(dir)
 	return ".../" .. parent .. "/" .. last
 end
 
+local function detect_project_command(dir)
+	dir = dir or vim.fn.getcwd()
+	local checks = {
+		{ file = "Cargo.toml", cmd = "cargo check" },
+		{ file = "Makefile", cmd = "make" },
+		{ file = "makefile", cmd = "make" },
+		{ file = "CMakeLists.txt", cmd = "cmake --build build" },
+		{ file = "package.json", cmd = "npm test" },
+		{ file = "go.mod", cmd = "go build ." },
+		{ file = "build.zig", cmd = "zig build" },
+		{ file = "pyproject.toml", cmd = "python3 -m pytest" },
+		{ file = "compile_commands.json", cmd = "ninja" },
+	}
+	for _, check in ipairs(checks) do
+		if vim.fn.filereadable(dir .. "/" .. check.file) == 1 then
+			return check.cmd
+		end
+	end
+	return nil
+end
+
 --- Prompt for a compile command (always starts empty), then run it in project root (cwd).
 --- Autocompletes commands for the first word and files/dirs for arguments upon pressing <Tab>.
 --- Empty input / cancel does nothing and never touches last_cmd.
 function compile.compile_prompt()
 	local dir_display = format_truncated_path(vim.fn.getcwd())
+	local default_hint = detect_project_command(vim.fn.getcwd()) or ""
+	local prompt_text = string.format("[%s] Run: ", dir_display)
 	local cmd = vim.fn.input({
-		prompt = string.format("[%s] Run: ", dir_display),
+		prompt = prompt_text,
 		completion = "customlist,v:lua.Ephemera_compile_complete",
 	})
 	if cmd and cmd:len() > 0 then
 		compile.compile(cmd)
+	elseif cmd and cmd == "" and default_hint ~= "" then
+		compile.compile(default_hint)
 	end
 end
 
@@ -147,12 +172,15 @@ end
 function compile.compile_prompt_file_dir()
 	local file_dir = get_current_file_dir()
 	local dir_display = format_truncated_path(file_dir)
+	local default_hint = detect_project_command(file_dir) or ""
 	local cmd = vim.fn.input({
 		prompt = string.format("[%s] Run: ", dir_display),
 		completion = "customlist,v:lua.Ephemera_compile_complete_file_dir",
 	})
 	if cmd and cmd:len() > 0 then
 		compile.compile(cmd, file_dir)
+	elseif cmd and cmd == "" and default_hint ~= "" then
+		compile.compile(default_hint, file_dir)
 	end
 end
 
@@ -161,7 +189,12 @@ function compile.recompile()
 	if compile.state.last_cmd then
 		compile.compile(compile.state.last_cmd)
 	else
-		compile.compile_prompt()
+		local detected = detect_project_command(vim.fn.getcwd())
+		if detected then
+			compile.compile(detected)
+		else
+			compile.compile_prompt()
+		end
 	end
 end
 
@@ -171,15 +204,72 @@ function compile.recompile_file_dir()
 	if compile.state.last_cmd then
 		compile.compile(compile.state.last_cmd, file_dir)
 	else
-		compile.compile_prompt_file_dir()
+		local detected = detect_project_command(file_dir)
+		if detected then
+			compile.compile(detected, file_dir)
+		else
+			compile.compile_prompt_file_dir()
+		end
 	end
 end
 
+--- Toggle watch mode: automatically re-runs last compile command whenever a file is saved.
+function compile.toggle_watch()
+	compile.state.watch_enabled = not (compile.state.watch_enabled or false)
+	if compile.state.watch_enabled then
+		local group = vim.api.nvim_create_augroup("CompileModeWatch", { clear = true })
+		vim.api.nvim_create_autocmd("BufWritePost", {
+			group = group,
+			callback = function()
+				if compile.state.last_cmd then
+					compile.compile(compile.state.last_cmd)
+				end
+			end,
+		})
+		vim.notify("CompileMode: Watch mode ENABLED (auto-compile on save)", vim.log.levels.INFO)
+	else
+		pcall(vim.api.nvim_del_augroup_by_name, "CompileModeWatch")
+		vim.notify("CompileMode: Watch mode DISABLED", vim.log.levels.INFO)
+	end
+end
+
+--- Exports all parsed compilation errors into Neovim's native Quickfix list.
+function compile.export_to_qf()
+	if not compile.highlight.has_warnings() then
+		vim.notify("CompileMode: No errors/warnings to export to Quickfix list", vim.log.levels.WARN)
+		return
+	end
+
+	local qf_list = {}
+	for _, key in ipairs(compile.highlight.state.warning_index) do
+		local err = compile.highlight.state.warning_list[key]
+		if err then
+			table.insert(qf_list, {
+				filename = err.file.val,
+				lnum = err.row.val or 1,
+				col = err.col.val or 0,
+				text = "Compiler error/warning",
+				type = "E",
+			})
+		end
+	end
+
+	vim.fn.setqflist(qf_list, "r")
+	vim.fn.setqflist({}, "a", { title = "Compile: " .. (compile.state.last_cmd or "Build") })
+	vim.cmd("copen")
+	vim.notify(string.format("CompileMode: Exported %d error(s) to Quickfix list", #qf_list), vim.log.levels.INFO)
+end
+
 --- Compiles the project and captures errors in the terminal.
+--- Auto-saves modified buffers beforehand and tracks build duration.
 ---@param cmd string The command to execute.
 ---@param cwd string|nil The working directory to execute the command in.
 function compile.compile(cmd, cwd)
+	-- Auto-save modified buffers before compiling
+	vim.cmd("silent! wall")
+
 	compile.state.last_cmd = cmd
+	compile.state.start_time = vim.loop.hrtime()
 	vim.g.compileMode_last_cmd = cmd
 	compile.utils.enter_wrapper(function()
 		compile.term.destroy()

@@ -159,6 +159,8 @@
                     ["n"] = {
                         -- toggle compilation window (show+focus or hide+unfocus)
                         ["<localleader>c"] = "require('Ephemera.custom.compileMode').term.toggle()",
+                        -- toggle watch mode (auto-compile on save)
+                        ["<localleader>cw"] = "require('Ephemera.custom.compileMode').toggle_watch()",
                         -- kill and close the compilation buffer
                         ["<localleader>cx"] = "require('Ephemera.custom.compileMode').destroy()",
                         -- Emacs-style compile: F5 reruns last command (prompts if none), F6 always prompts
@@ -189,6 +191,8 @@
                             ["r"] = "require('Ephemera.custom.compileMode').clear()",
                             -- quit the terminal.
                             ["q"] = "require('Ephemera.custom.compileMode').destroy()",
+                            ["w"] = "require('Ephemera.custom.compileMode').toggle_watch()",
+                            ["Q"] = "require('Ephemera.custom.compileMode').export_to_qf()",
                             ["n"] = "require('Ephemera.custom.compileMode').next_error()",
                             ["p"] = "require('Ephemera.custom.compileMode').prev_error()",
                             ["f"] = "require('Ephemera.custom.compileMode').first_error()",

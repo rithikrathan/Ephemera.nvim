@@ -57,6 +57,7 @@ return {
 		global = {
 			["n"] = {
 				["<localleader>c"] = "require('Ephemera.custom.compileMode').term.toggle()",
+				["<localleader>cw"] = "require('Ephemera.custom.compileMode').toggle_watch()",
 				["<localleader>cx"] = "require('Ephemera.custom.compileMode').destroy()",
 				["<F5>"] = "require('Ephemera.custom.compileMode').recompile()",
 				["<F6>"] = "require('Ephemera.custom.compileMode').compile_prompt()",
@@ -77,6 +78,8 @@ return {
 				["n"] = {
 					["r"] = "require('Ephemera.custom.compileMode').clear()",
 					["q"] = "require('Ephemera.custom.compileMode').destroy()",
+					["w"] = "require('Ephemera.custom.compileMode').toggle_watch()",
+					["Q"] = "require('Ephemera.custom.compileMode').export_to_qf()",
 					["n"] = "require('Ephemera.custom.compileMode').next_error()",
 					["p"] = "require('Ephemera.custom.compileMode').prev_error()",
 					["f"] = "require('Ephemera.custom.compileMode').first_error()",
