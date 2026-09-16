@@ -27,6 +27,10 @@ function compile.term.setup(o)
 	opts = o
 end
 
+-- BUG/TODO: Left and right vertical orientations cause the underlying terminal PTY
+-- to hard-wrap lines (inserting physical newline chars \r\n into the stream) when window
+-- width is narrow. This splits error messages across multiple buffer lines and can break
+-- single-line regex pattern matching. Bottom/top horizontal splits are recommended.
 local split_cycle = {
 	{ name = "right", cmd = "wincmd L", resize = function(w) vim.api.nvim_win_set_width(w, math.floor(vim.o.columns * 0.45)) end, split_opt = "right" },
 	{ name = "top", cmd = "wincmd K", resize = function(w) vim.api.nvim_win_set_height(w, math.floor(vim.o.lines * 0.4)) end, split_opt = "above" },
@@ -196,22 +200,6 @@ function compile.term.attach_event()
 			end
 			local lines = vim.api.nvim_buf_get_lines(compile.term.state.buf, first_line, last_line, false)
 			require("Ephemera.custom.runMode.highlight").process_lines(lines, first_line)
-
-			local compile_mod = require("Ephemera.custom.runMode")
-
-			-- Autoscroll terminal window down while running
-			if compile_mod.state.running and vim.api.nvim_win_is_valid(compile.term.state.win) then
-				pcall(vim.api.nvim_win_set_cursor, compile.term.state.win, { last_line, 0 })
-			end
-
-			-- Check for process completion sentinel
-			for _, line in ipairs(lines) do
-				local exit_code = line:match("__EPHEMERA_DONE__:(%d+)")
-				if exit_code and not compile_mod.state.done_handled then
-					compile_mod.on_compile_done(tonumber(exit_code))
-					break
-				end
-			end
 		end,
 	})
 end

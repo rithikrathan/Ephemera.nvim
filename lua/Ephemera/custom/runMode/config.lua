@@ -30,9 +30,9 @@
                 -- Enable highlighting / purple visual blink on error navigation (v, n, p, f, l)
                 enabled = true,
                 -- The timeout in milliseconds for the highlight to appear in the terminal.
-                timeout_term = 300,
+                timeout_term = 70,
                 -- The timeout in milliseconds for the highlight in a normal buffer.
-                timeout_normal = 250,
+                timeout_normal = 70,
             },
 
             patterns = {

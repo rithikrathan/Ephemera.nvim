@@ -314,62 +314,7 @@ function compile.export_to_qf()
 	vim.notify(string.format("Exported %d error(s) to Quickfix", #qf_list), vim.log.levels.INFO)
 end
 
---- Called when the compilation process finishes executing in the terminal.
---- Computes duration, prints Emacs-style echo in the command line,
---- and performs auto-jump to first error (if failed) or autoscroll to end (if succeeded).
---- Includes [Watch] in the done message if executed in watch mode.
----@param exit_code number Process exit status code.
-function compile.on_compile_done(exit_code)
-	compile.state.done_handled = true
-	compile.state.running = false
-	compile.state.exit_code = exit_code
-	local elapsed_ns = vim.loop.hrtime() - (compile.state.start_time or vim.loop.hrtime())
-	local duration = elapsed_ns / 1e9
-	compile.state.duration = duration
-	local dur_str = string.format("%.2fs", duration)
-	local time_str = os.date("%H:%M:%S")
-
-	local err_count = (compile.highlight.state and compile.highlight.state.warning_index and #compile.highlight.state.warning_index) or 0
-	local cmd_str = compile.state.last_cmd or "Build"
-	local mode_label = compile.state.watch_enabled and "Watch" or "Run"
-
-	-- Emacs-style command-line echo (includes [Watch] or [Run])
-	local echo_chunks = {}
-	if exit_code == 0 and err_count == 0 then
-		table.insert(
-			echo_chunks,
-			{ string.format("✓ [%s] Succeeded in %s at %s (0 errors) • ", mode_label, dur_str, time_str), "DiagnosticOk" }
-		)
-		table.insert(echo_chunks, { cmd_str, "Comment" })
-	else
-		local status_msg = string.format("✗ [%s] Exited with code %d in %s at %s ", mode_label, exit_code, dur_str, time_str)
-		table.insert(echo_chunks, { status_msg, "DiagnosticError" })
-		table.insert(echo_chunks, { string.format("(%d error%s) • ", err_count, err_count == 1 and "" or "s"), "DiagnosticWarn" })
-		table.insert(echo_chunks, { cmd_str, "Comment" })
-	end
-
-	vim.schedule(function()
-		vim.api.nvim_echo(echo_chunks, false, {})
-		pcall(vim.cmd, "redrawstatus")
-
-		local term_win = compile.term.state.win
-		local term_buf = compile.term.state.buf
-
-		if err_count > 0 then
-			-- Auto-jump to first error and center preview in editor buffer (zz)
-			compile.first_error()
-		else
-			-- On clean success, autoscroll to the bottom of the terminal output
-			if vim.api.nvim_win_is_valid(term_win) and vim.api.nvim_buf_is_valid(term_buf) then
-				local line_count = vim.api.nvim_buf_line_count(term_buf)
-				pcall(vim.api.nvim_win_set_cursor, term_win, { line_count, 0 })
-			end
-		end
-	end)
-end
-
 --- Compiles the project and captures errors in the terminal.
---- Prompts to save modified buffers (if any), tracks build duration, and prints watch mode banner if active.
 ---@param cmd string The command to execute.
 ---@param cwd string|nil The working directory to execute the command in.
 function compile.compile(cmd, cwd)
@@ -377,11 +322,6 @@ function compile.compile(cmd, cwd)
 	prompt_save_modified_buffers()
 
 	compile.state.last_cmd = cmd
-	compile.state.running = true
-	compile.state.done_handled = false
-	compile.state.exit_code = nil
-	compile.state.duration = nil
-	compile.state.start_time = vim.loop.hrtime()
 	vim.g.runMode_last_cmd = cmd
 	compile.utils.enter_wrapper(function()
 		compile.term.destroy()
@@ -395,21 +335,7 @@ function compile.compile(cmd, cwd)
 		if cwd and cwd ~= "" then
 			vim.api.nvim_chan_send(compile.term.state.channel, "cd " .. vim.fn.fnameescape(cwd) .. terminator)
 		end
-		-- wipe shell startup output (fastfetch, prompt) before running
-		vim.api.nvim_chan_send(compile.term.state.channel, "clear" .. terminator)
-
-		if compile.state.watch_enabled then
-			vim.api.nvim_chan_send(
-				compile.term.state.channel,
-				"echo -e '\\033[1;36m[WATCH MODE: Auto-recompiling on save]\\033[0m'" .. terminator
-			)
-		end
-
-		local wrapped_cmd = string.format(
-			"{ %s ; } ; printf '\\n\\033[90m── Finished (exit %%s) ──\\033[0m\\n\\033[8m__EPHEMERA_DONE__:%%s\\033[0m\\n' \"$?\" \"$?\"",
-			cmd
-		)
-		compile.term.send_cmd(wrapped_cmd)
+		compile.term.send_cmd(cmd)
 	end)
 end
 
@@ -428,7 +354,7 @@ local function do_blink(buf, start_pos, end_pos, timeout)
 	if not buf or not vim.api.nvim_buf_is_valid(buf) then
 		return
 	end
-	timeout = timeout or 250
+	timeout = timeout or 70
 
 	pcall(vim.api.nvim_buf_clear_namespace, buf, blink_ns, 0, -1)
 
@@ -492,8 +418,8 @@ function compile.goto_error()
 		pcall(vim.api.nvim_win_set_cursor, win, { target_row, target_col })
 		vim.cmd("normal! zz")
 
-		-- Visual feedback: blink the error line in purple with contrast foreground
-		local t_timeout = (compile.opts and compile.opts.highlight_under_cursor and compile.opts.highlight_under_cursor.timeout_normal) or 250
+		-- Visual feedback: micro-blink the error line in purple
+		local t_timeout = (compile.opts and compile.opts.highlight_under_cursor and compile.opts.highlight_under_cursor.timeout_normal) or 70
 		do_blink(buf, { target_row - 1, 0 }, { target_row - 1, -1 }, t_timeout)
 	end)
 
@@ -507,8 +433,8 @@ function compile.goto_error()
 		pcall(vim.api.nvim_win_set_cursor, term_win, { t_row, t_col })
 		vim.api.nvim_set_current_win(term_win)
 
-		-- Visual feedback: blink the error token in the terminal window
-		local t_term_timeout = (compile.opts and compile.opts.highlight_under_cursor and compile.opts.highlight_under_cursor.timeout_term) or 300
+		-- Visual feedback: micro-blink the error token in the terminal window
+		local t_term_timeout = (compile.opts and compile.opts.highlight_under_cursor and compile.opts.highlight_under_cursor.timeout_term) or 70
 		do_blink(term_buf, c_error.file.pos[1], c_error.file.pos[2], t_term_timeout)
 	end
 end

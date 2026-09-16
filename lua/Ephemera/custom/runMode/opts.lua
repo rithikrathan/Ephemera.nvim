@@ -36,8 +36,8 @@ return {
 
 	highlight_under_cursor = {
 		enabled = true,
-		timeout_term = 500,
-		timeout_normal = 200,
+		timeout_term = 70,
+		timeout_normal = 70,
 	},
 
 	patterns = {

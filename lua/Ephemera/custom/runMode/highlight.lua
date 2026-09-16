@@ -21,8 +21,8 @@ local opts = {}
 function compile.highlight.setup(o)
 	opts = o
 	vim.api.nvim_set_hl(0, "RunBlink", {
-		bg = "#43205e", -- Dim purple background
-		fg = "#f5e8ff", -- High-contrast soft character foreground
+		bg = "#271238", -- Dark subtle purple background
+		fg = "#e8d8f8", -- Soft contrast foreground
 		bold = true,
 		default = true,
 	})
