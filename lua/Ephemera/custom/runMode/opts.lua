@@ -21,13 +21,13 @@ return {
 	term_win_opts = {
 		split = "above",
 		height = 0.3,
-		width = 1,
+		width = 0.45,
 	},
 
 	normal_win_opts = {
 		split = "below",
 		height = 0.7,
-		width = 1,
+		width = 0.55,
 	},
 
 	enter = false,
@@ -66,6 +66,7 @@ return {
 		global = {
 			["n"] = {
 				["<localleader>c"] = "require('Ephemera.custom.runMode').term.toggle()",
+				["<localleader>cf"] = "require('Ephemera.custom.runMode').term.jump_to()",
 				["<localleader>cw"] = "require('Ephemera.custom.runMode').toggle_watch()",
 				["<localleader>cx"] = "require('Ephemera.custom.runMode').destroy()",
 				["<F5>"] = "require('Ephemera.custom.runMode').recompile()",

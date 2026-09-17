@@ -10,8 +10,8 @@
                 split = "above",
                 -- The height of the terminal window as a percentage (0.3 = 30%).
                 height = 0.3,
-                -- Any number >= 1 will use that amount of lines as height
-                -- Or you can make it float, adding borders, etc. check :h win_config
+                -- The width of the terminal window for left/right vertical splits (0.45 = 45%).
+                width = 0.45,
             },
 
             ---@type vim.api.keyset.win_config
@@ -20,6 +20,7 @@
                 split = "below",
                 -- similar to term_win_opts
                 height = 0.7,
+                width = 0.55,
             },
 
             ---@type boolean
@@ -204,6 +205,8 @@
                     ["n"] = {
                         -- toggle compilation window (show+focus or hide+unfocus)
                         ["<localleader>c"] = "require('Ephemera.custom.runMode').term.toggle()",
+                        -- jump/focus to the compilation window
+                        ["<localleader>cf"] = "require('Ephemera.custom.runMode').term.jump_to()",
                         -- toggle watch mode (auto-compile on save)
                         ["<localleader>cw"] = "require('Ephemera.custom.runMode').toggle_watch()",
                         -- kill and close the compilation buffer
