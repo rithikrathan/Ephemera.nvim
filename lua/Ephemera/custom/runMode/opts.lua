@@ -19,14 +19,14 @@
 return {
 	term_win_name = "CompileTerm",
 	term_win_opts = {
-		split = "below",
-		height = 0.4,
+		split = "above",
+		height = 0.3,
 		width = 1,
 	},
 
 	normal_win_opts = {
-		split = "above",
-		height = 0.6,
+		split = "below",
+		height = 0.7,
 		width = 1,
 	},
 

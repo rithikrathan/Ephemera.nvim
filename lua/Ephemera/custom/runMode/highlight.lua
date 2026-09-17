@@ -16,12 +16,12 @@ compile.highlight.state = {
 compile.highlight.ns = vim.api.nvim_create_namespace("TermHl")
 
 local function setup_run_blink()
-	local bool_hl = vim.api.nvim_get_hl(0, { name = "Boolean", link = false })
-	local orange = bool_hl.fg or "#ffa07a"
+	local orange = "#bb1111"
 	vim.api.nvim_set_hl(0, "RunBlink", {
+        fg = "#000000",
 		bg = orange,
-		fg = "#000000",
 		bold = true,
+		italic = true,
 	})
 end
 

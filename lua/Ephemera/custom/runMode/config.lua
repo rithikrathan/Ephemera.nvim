@@ -6,20 +6,20 @@
 
             ---@type vim.api.keyset.win_config
             term_win_opts = {
-                -- The split direction for the terminal window. "below" places it at the bottom.
-                split = "below",
-                -- The height of the terminal window as a percentage (0.4 = 40%).
-                height = 0.4,
+                -- The split direction for the terminal window. "above" places it at the top.
+                split = "above",
+                -- The height of the terminal window as a percentage (0.3 = 30%).
+                height = 0.3,
                 -- Any number >= 1 will use that amount of lines as height
                 -- Or you can make it float, adding borders, etc. check :h win_config
             },
 
             ---@type vim.api.keyset.win_config
             normal_win_opts = {
-                -- The split direction for the normal window. "above" places it at the top.
-                split = "above",
+                -- The split direction for the normal window. "below" places it at the bottom.
+                split = "below",
                 -- similar to term_win_opts
-                height = 0.6,
+                height = 0.7,
             },
 
             ---@type boolean
@@ -30,9 +30,9 @@
                 -- Enable highlighting / purple visual blink on error navigation (v, n, p, f, l)
                 enabled = true,
                 -- The timeout in milliseconds for the highlight to appear in the terminal.
-                timeout_term = 70,
+                timeout_term = 100,
                 -- The timeout in milliseconds for the highlight in a normal buffer.
-                timeout_normal = 70,
+                timeout_normal = 300,
             },
 
             patterns = {
@@ -229,8 +229,6 @@
                         ["n"] = {
                             -- clears the terminal
                             ["<localleader>cr"] = "require('Ephemera.custom.runMode').clear()",
-                            -- quits the terminal buffer.
-                            ["<localleader>cq"] = "require('Ephemera.custom.runMode').destroy()",
                         },
                     },
                     -- This one will only work INSIDE the terminal buffer
@@ -246,7 +244,7 @@
                             ["p"] = "require('Ephemera.custom.runMode').prev_error()",
                             ["f"] = "require('Ephemera.custom.runMode').first_error()",
                             ["l"] = "require('Ephemera.custom.runMode').last_error()",
-                            ["v"] = "require('Ephemera.custom.runMode').preview_nearest_error()",
+                            ["o"] = "require('Ephemera.custom.runMode').preview_nearest_error()",
                             -- Jump to the nearest error under or before your cursor and close term
                             ["<Cr>"] = "require('Ephemera.custom.runMode').nearest_error()",
                         },
@@ -254,8 +252,6 @@
                         ["t"] = {
                             -- Press `<CR>` in terminal mode to send a command and clear highlights.
                             ["<CR>"] = "require('Ephemera.custom.runMode').clear_hl()",
-                            -- This sends the command to the terminal without clearing the error list!
-                            ["<C-j>"] = "require('Ephemera.custom.runMode.term').send_cmd('')",
                         },
                     },
                 },

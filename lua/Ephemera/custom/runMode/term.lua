@@ -17,40 +17,52 @@ compile.term.state = {
 	warning_list = {},
 	warning_index = {},
 	current_warning = 0,
-	split_idx = 4, -- defaults to 4 (bottom) on startup
+	split_idx = 2, -- defaults to 2 (top) on startup
 }
 
 local opts = {}
 
+local split_cycle = {
+	{ name = "right", cmd = "wincmd L", resize = function(w) vim.api.nvim_win_set_width(w, (opts.term_win_opts and opts.term_win_opts.width) or math.floor(vim.o.columns * 0.45)) end, split_opt = "right" },
+	{ name = "top", cmd = "wincmd K", resize = function(w) vim.api.nvim_win_set_height(w, (opts.term_win_opts and opts.term_win_opts.height) or math.floor(vim.o.lines * 0.3)) end, split_opt = "above" },
+	{ name = "left", cmd = "wincmd H", resize = function(w) vim.api.nvim_win_set_width(w, (opts.term_win_opts and opts.term_win_opts.width) or math.floor(vim.o.columns * 0.45)) end, split_opt = "left" },
+	{ name = "bottom", cmd = "wincmd J", resize = function(w) vim.api.nvim_win_set_height(w, (opts.term_win_opts and opts.term_win_opts.height) or math.floor(vim.o.lines * 0.3)) end, split_opt = "below" },
+}
+
 --- Initialize terminal module
 function compile.term.setup(o)
-	opts = o
+	opts = o or {}
+	if opts.term_win_opts and opts.term_win_opts.split then
+		local s = tostring(opts.term_win_opts.split):lower()
+		for i, v in ipairs(split_cycle) do
+			if v.split_opt == s or v.name == s or (s == "above" and v.split_opt == "above") or (s == "top" and v.split_opt == "above") or (s == "below" and v.split_opt == "below") or (s == "bottom" and v.split_opt == "below") then
+				compile.term.state.split_idx = i
+				break
+			end
+		end
+	end
 end
 
 -- BUG/TODO: Left and right vertical orientations cause the underlying terminal PTY
 -- to hard-wrap lines (inserting physical newline chars \r\n into the stream) when window
 -- width is narrow. This splits error messages across multiple buffer lines and can break
 -- single-line regex pattern matching. Bottom/top horizontal splits are recommended.
-local split_cycle = {
-	{ name = "right", cmd = "wincmd L", resize = function(w) vim.api.nvim_win_set_width(w, math.floor(vim.o.columns * 0.45)) end, split_opt = "right" },
-	{ name = "top", cmd = "wincmd K", resize = function(w) vim.api.nvim_win_set_height(w, math.floor(vim.o.lines * 0.4)) end, split_opt = "above" },
-	{ name = "left", cmd = "wincmd H", resize = function(w) vim.api.nvim_win_set_width(w, math.floor(vim.o.columns * 0.45)) end, split_opt = "left" },
-	{ name = "bottom", cmd = "wincmd J", resize = function(w) vim.api.nvim_win_set_height(w, math.floor(vim.o.lines * 0.4)) end, split_opt = "below" },
-}
 
 --- Returns win_opts conforming to the current session's cycled split orientation
 function compile.term.get_win_opts()
-	local idx = compile.term.state.split_idx or 4
-	local target = split_cycle[idx] or split_cycle[4]
+	local idx = compile.term.state.split_idx or 2
+	local target = split_cycle[idx] or split_cycle[2]
+	local h = (opts.term_win_opts and opts.term_win_opts.height) or math.floor(vim.o.lines * 0.3)
+	local w = (opts.term_win_opts and opts.term_win_opts.width) or math.floor(vim.o.columns * 0.45)
 	if target.split_opt == "right" or target.split_opt == "left" then
 		return {
 			split = target.split_opt,
-			width = math.floor(vim.o.columns * 0.45),
+			width = w,
 		}
 	else
 		return {
 			split = target.split_opt,
-			height = math.floor(vim.o.lines * 0.4),
+			height = h,
 		}
 	end
 end
