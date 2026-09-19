@@ -367,6 +367,8 @@ and if the output has `file:line:col` pointers (compilers, linters, `rg`/`grep`,
 tests, ...) it highlights them so you can jump straight to the spot. The window
 is named `RunMode`.
 
+![Run Mode](screenshots/runmode.png)
+
 ### Running stuff
 
 Press `<F5>` once and it usually just works: for a standalone file it figures
