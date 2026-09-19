@@ -359,6 +359,83 @@ Telescope-based theme selector:
 
 ---
 
+## Run Mode
+
+Run Mode (`lua/Ephemera/custom/runMode/`, a fork of `compile.nvim`) is a run
+terminal built into nvim. You give it a command, it runs it in its own window,
+and if the output has `file:line:col` pointers (compilers, linters, `rg`/`grep`,
+tests, ...) it highlights them so you can jump straight to the spot. The window
+is named `RunMode`.
+
+### Running stuff
+
+Press `<F5>` once and it usually just works: for a standalone file it figures
+out the right command (`.py` → `python3 file.py`, `.c` → `gcc -Wall -Wextra ...`,
+`.cpp`, `.rs`, `.go`, `.js`, `.lua`, `.java`, ...), and for a project it looks
+for a `Cargo.toml`, `Makefile`, `CMakeLists.txt`, `package.json`, `go.mod`,
+`pyproject.toml`, `build.zig`, `Justfile`, `nob.c` or `compile_commands.json`.
+The first time it shows you what it found and lets you confirm; after that
+`<F5>` just re-runs your last command — pressing it again re-runs it again.
+
+| Key | What it does |
+|-----|--------------|
+| `<F5>` | Run the last command (detects the command and asks the first time) |
+| `<S-F5>` / `<F17>` | Same, but in the current file's folder |
+| `<F6>` | Type a command to run (the box always starts empty, so it never touches your last command) |
+| `<S-F6>` / `<F18>` | Type a command, run it in the current file's folder |
+| `<A-F6>` / `<M-F6>` | Type a command and enable watch mode |
+
+Every run clears the terminal first, and when the command finishes it prints a
+footer line with the finish time, how long it took, and the exit code if it
+failed. The terminal behaves like your normal shell — you can type in it freely.
+
+### Watch mode
+
+Watch mode re-runs your last command every time you save a file. Pressing the
+same key again turns it off.
+
+| Key | What it does |
+|-----|--------------|
+| `w` | Toggle watch (runs in the project root) |
+| `<S-w>` | Toggle watch in the current file's folder |
+| `<localleader>cw` | Toggle watch (same as `w`) from anywhere |
+| `<localleader>cW` | Toggle watch in the current file's folder from anywhere |
+
+### Terminal window
+
+| Key | What it does |
+|-----|--------------|
+| `<localleader>c` | Show / hide the terminal |
+| `<localleader>cf` | Jump into it |
+| `<localleader>cx` or `q` | Close it |
+| `<localleader>cr` or `r` | Clear it |
+| `s` | Cycle the split position (right → top → left → bottom) |
+
+### Jumping to errors
+
+Lines that look like `file:line:col` get their file, line and column
+highlighted red.
+
+| Key | What it does |
+|-----|--------------|
+| `<CR>` | Open the link under the cursor, otherwise jump to the nearest error |
+| `n` / `p` | Next / previous error |
+| `f` / `l` | First / last error |
+| `o` | Peek at the error nearest the cursor |
+| `Q` | Export all parsed errors to the quickfix list |
+| `t` `<CR>` (term mode) | Send the line and clear highlights |
+
+Jumping blinks the target so you can see where you landed. URLs in the output
+are highlighted blue; `<CR>` on one opens it in your browser (trailing
+punctuation is trimmed so it opens clean). The link matcher and any custom
+patterns live under `opts.general_patterns`.
+
+When the terminal is a narrow split the shell hard-wraps long lines, and RunMode
+re-joins them for matching, so errors and links that cross a wrap boundary still
+parse, highlight and open correctly.
+
+---
+
 ## Plugins
 
 ### Core

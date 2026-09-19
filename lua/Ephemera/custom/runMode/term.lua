@@ -18,6 +18,8 @@ compile.term.state = {
 	warning_index = {},
 	current_warning = 0,
 	split_idx = 2, -- defaults to 2 (top) on startup
+	wrap_col = vim.o.columns, -- PTY width, used to detect hard-wrapped rows
+	pending = nil, -- partial logical line carried across on_lines callbacks
 }
 
 local opts = {}
@@ -46,7 +48,104 @@ end
 -- BUG/TODO: Left and right vertical orientations cause the underlying terminal PTY
 -- to hard-wrap lines (inserting physical newline chars \r\n into the stream) when window
 -- width is narrow. This splits error messages across multiple buffer lines and can break
--- single-line regex pattern matching. Bottom/top horizontal splits are recommended.
+-- single-line regex pattern matching. Mitigated below: logicalize() re-joins full-width
+-- physical rows before patttern matching, and map_logical_pos() restores physical coords.
+
+--- Refresh the PTY wrap width from the visible terminal window.
+function compile.term.update_wrap_col()
+	if vim.api.nvim_win_is_valid(compile.term.state.win) then
+		compile.term.state.wrap_col = vim.api.nvim_win_get_width(compile.term.state.win)
+	else
+		compile.term.state.wrap_col = vim.o.columns
+	end
+end
+
+--- Re-join any PTY hard-wrapped physical rows into logical lines.
+--- A physical row whose length == wrap_col is a full-width segment: the next
+--- physical row continues the same logical line. A pending logical line from a
+--- previous callback is carried over across chunk boundaries.
+---@param first_line number first physical row of the chunk (same numbering nvim_get_lines uses)
+---@param lines string[] the chunk of new physical rows
+---@return table[] logical entries: { text, start_row, nseg, wrap }
+function compile.term.logicalize(first_line, lines)
+	compile.term.update_wrap_col()
+	local wrap = compile.term.state.wrap_col or vim.o.columns
+	if wrap < 1 then
+		wrap = vim.o.columns
+	end
+
+	local out = {}
+	local pending = compile.term.state.pending
+	for i, line in ipairs(lines) do
+		local n = #line
+		if pending then
+			pending.text = pending.text .. line
+			pending.nseg = pending.nseg + 1
+		else
+			pending = { text = line, start_row = first_line + i - 1, nseg = 1, wrap = wrap }
+		end
+
+		if n ~= wrap then
+			out[#out + 1] = pending
+			pending = nil
+		end
+	end
+	compile.term.state.pending = pending
+	return out
+end
+
+--- Reconstruct the logical (wrap-joined) line containing physical row `row1`,
+--- plus the logical offset of a cursor at (row1, col0). Used so open_link /
+--- enter_action still see URLs that were hard-wrapped across two rows.
+---@param row1 number 1-based physical row
+---@param col0 number 0-based column inside that row
+---@return table|nil { text, start_row, seg_rows, seg_sizes, cursor_off }
+function compile.term.get_logical_at(row1, col0)
+	local buf = compile.term.state.buf
+	if not vim.api.nvim_buf_is_valid(buf) or row1 < 1 or row1 > vim.api.nvim_buf_line_count(buf) then
+		return nil
+	end
+	compile.term.update_wrap_col()
+	local wrap = compile.term.state.wrap_col or vim.o.columns
+
+	local start_row = row1
+	while start_row > 1 do
+		local prev = vim.api.nvim_buf_get_lines(buf, start_row - 2, start_row - 1, false)[1] or ""
+		if #prev == wrap then
+			start_row = start_row - 1
+		else
+			break
+		end
+	end
+
+	local text_parts, seg_rows, seg_sizes = {}, {}, {}
+	local r, nlines = start_row, vim.api.nvim_buf_line_count(buf)
+	while r <= nlines do
+		local line = vim.api.nvim_buf_get_lines(buf, r - 1, r, false)[1] or ""
+		text_parts[#text_parts + 1] = line
+		seg_rows[#seg_rows + 1] = r
+		seg_sizes[#seg_sizes + 1] = #line
+		if #line ~= wrap then
+			break
+		end
+		r = r + 1
+	end
+
+	local cursor_off = col0 or 0
+	for i = 1, #seg_rows do
+		if seg_rows[i] == row1 then
+			return {
+				text = table.concat(text_parts),
+				start_row = start_row,
+				seg_rows = seg_rows,
+				seg_sizes = seg_sizes,
+				cursor_off = cursor_off,
+			}
+		end
+		cursor_off = cursor_off + seg_sizes[i]
+	end
+	return nil
+end
 
 --- Returns win_opts conforming to the current session's cycled split orientation
 function compile.term.get_win_opts()
@@ -73,6 +172,7 @@ function compile.term.init()
 	local win_opts = compile.term.get_win_opts()
 	compile.term.state.win = vim.api.nvim_open_win(compile.term.state.buf, true, win_opts)
 	vim.cmd("term")
+	compile.term.update_wrap_col()
 	if compile.opts.hidden then
 		vim.api.nvim_set_option_value("buflisted", false, { scope = "local", buf = compile.term.state.buf })
 	end
@@ -95,6 +195,7 @@ function compile.term.show()
 		local win_opts = compile.term.get_win_opts()
 		compile.term.state.win = vim.api.nvim_open_win(compile.term.state.buf, true, win_opts)
 		vim.api.nvim_set_option_value("wrap", false, { scope = "local", win = compile.term.state.win })
+		compile.term.update_wrap_col()
 	else
 		compile.term.init()
 	end
@@ -123,6 +224,7 @@ function compile.term.destroy()
 		compile.term.state.buf = -1
 		compile.term.state.channel = -1
 		compile.term.state.last_line = 0
+		compile.term.state.pending = nil
 	end
 end
 
@@ -154,19 +256,18 @@ function compile.term.cycle_split()
 	local target = split_cycle[compile.term.state.split_idx]
 
 	vim.api.nvim_set_current_win(win)
-	vim.cmd(target.cmd)
+	pcall(vim.cmd, target.cmd)
 	if target.resize then
-		target.resize(win)
+		pcall(target.resize, win)
 	end
 
 	-- Explicitly keep text wrapping OFF
 	vim.api.nvim_set_option_value("wrap", false, { scope = "local", win = win })
+	compile.term.update_wrap_col()
 
 	if compile.opts and compile.opts.term_win_opts then
 		compile.opts.term_win_opts.split = target.split_opt
 	end
-
-	vim.notify("Run: Split aligned to " .. target.name, vim.log.levels.INFO)
 end
 
 local function is_windows_os()
@@ -210,8 +311,11 @@ function compile.term.attach_event()
 			if first_line < compile.term.state.last_line then
 				first_line = compile.term.state.last_line
 			end
-			local lines = vim.api.nvim_buf_get_lines(compile.term.state.buf, first_line, last_line, false)
-			require("Ephemera.custom.runMode").process_lines(lines, first_line)
+			local physical = vim.api.nvim_buf_get_lines(compile.term.state.buf, first_line, last_line, false)
+			local logical = compile.term.logicalize(first_line, physical)
+			if #logical > 0 then
+				require("Ephemera.custom.runMode").process_lines(logical)
+			end
 		end,
 	})
 end

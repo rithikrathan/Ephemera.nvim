@@ -13,11 +13,11 @@
 ---@field normal_win_opts vim.api.keyset.win_config Options of the normal window (if there is not one already)
 ---@field enter boolean If true, automatically enter the terminal window after compiling.
 ---@field highlight_under_cursor table Options for highlighting the error under the cursor in both terminal and normal windows.
----@field patterns table A table of regular expression patterns used to parse compiler errors.
+---@field patterns table A table of regular expression patterns used to parse errors.
 ---@field colors table A table of highlight groups to use for coloring different parts of an error message.
 ---@field keys table A table of keymaps for global and terminal-specific actions.
 return {
-	term_win_name = "CompileTerm",
+	term_win_name = "RunMode",
 	term_win_opts = {
 		split = "above",
 		height = 0.3,
@@ -57,18 +57,19 @@ return {
 	},
 
 	colors = {
-		file = "WarningMsg",
-		row = "CursorLineNr",
-		col = "CursorLineNr",
+		file = "RunError",
+		row = "RunError",
+		col = "RunError",
 	},
 
 	--- Non-error patterns (links, etc.). Matches are handed to general handlers.
 	--- Each spec: { pattern = "...", handler?, hl?, blink? }
 	general_patterns = {
-		-- Openable links: no auto-blink on match; <CR> in the run terminal
-		-- blinks + opens the link under the cursor.
+		-- Openable links: persistently underlined in blue so they can be seen;
+		-- <CR> in the run terminal blinks + opens the link under the cursor.
 		url = {
 			pattern = '[%w][%w+.-]*://[%w%.~:/%?#%[%]@!$&\'()*+,;=%%-]+',
+			hl = "RunLink",
 		},
 	},
 
@@ -78,15 +79,16 @@ return {
 				["<localleader>c"] = "require('Ephemera.custom.runMode').term.toggle()",
 				["<localleader>cf"] = "require('Ephemera.custom.runMode').term.jump_to()",
 				["<localleader>cw"] = "require('Ephemera.custom.runMode').toggle_watch()",
+				["<localleader>cW"] = "require('Ephemera.custom.runMode').toggle_watch_file_dir()",
 				["<localleader>cx"] = "require('Ephemera.custom.runMode').destroy()",
-				["<F5>"] = "require('Ephemera.custom.runMode').recompile()",
-				["<F6>"] = "require('Ephemera.custom.runMode').compile_prompt()",
-				["<S-F5>"] = "require('Ephemera.custom.runMode').recompile_file_dir()",
-				["<F17>"] = "require('Ephemera.custom.runMode').recompile_file_dir()",
-				["<S-F6>"] = "require('Ephemera.custom.runMode').compile_prompt_file_dir()",
-				["<F18>"] = "require('Ephemera.custom.runMode').compile_prompt_file_dir()",
-				["<A-F6>"] = "require('Ephemera.custom.runMode').compile_watch_prompt()",
-				["<M-F6>"] = "require('Ephemera.custom.runMode').compile_watch_prompt()",
+				["<F5>"] = "require('Ephemera.custom.runMode').run_last()",
+				["<F6>"] = "require('Ephemera.custom.runMode').run_prompt()",
+				["<S-F5>"] = "require('Ephemera.custom.runMode').run_file_dir()",
+				["<F17>"] = "require('Ephemera.custom.runMode').run_file_dir()",
+				["<S-F6>"] = "require('Ephemera.custom.runMode').run_prompt_file_dir()",
+				["<F18>"] = "require('Ephemera.custom.runMode').run_prompt_file_dir()",
+				["<A-F6>"] = "require('Ephemera.custom.runMode').run_watch_prompt()",
+				["<M-F6>"] = "require('Ephemera.custom.runMode').run_watch_prompt()",
 			},
 		},
 		term = {
@@ -101,6 +103,7 @@ return {
 					["r"] = "require('Ephemera.custom.runMode').clear()",
 					["q"] = "require('Ephemera.custom.runMode').destroy()",
 					["w"] = "require('Ephemera.custom.runMode').toggle_watch()",
+					["<S-w>"] = "require('Ephemera.custom.runMode').toggle_watch_file_dir()",
 					["s"] = "require('Ephemera.custom.runMode').term.cycle_split()",
 					["Q"] = "require('Ephemera.custom.runMode').export_to_qf()",
 					["n"] = "require('Ephemera.custom.runMode').next_error()",

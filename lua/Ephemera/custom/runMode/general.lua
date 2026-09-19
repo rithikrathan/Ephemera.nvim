@@ -25,7 +25,13 @@ local function trim_link(s, start)
 end
 
 local function setup_link_hl()
+	-- Persistent link styling: blue foreground + underline so links stay visible.
 	vim.api.nvim_set_hl(0, "RunLink", {
+		fg = "#0f6fff",
+		underline = true,
+	})
+	-- Short flash used when opening a link (blue block, distinct from the red RunBlink).
+	vim.api.nvim_set_hl(0, "RunLinkFlash", {
 		fg = "#000000",
 		bg = "#0f6fff",
 		bold = true,
@@ -111,29 +117,44 @@ end
 ---@param col_start number 0-based start col
 ---@param col_end number 1-based end col (matches existing hl.range convention)
 ---@param timeout number blink duration ms
----@param group string? highlight group, defaults to RunLink
+---@param group string? highlight group, defaults to RunLinkFlash
 function compile.general.blink_span(buf, row, col_start, col_end, timeout, group)
 	if not buf or not vim.api.nvim_buf_is_valid(buf) then
 		return
 	end
 	timeout = timeout or BLINK_MS
-	group = group or "RunLink"
+	group = group or "RunLinkFlash"
 	pcall(vim.hl.range, buf, compile.general.state.ns, group, { row, col_start }, { row, col_end }, {
 		priority = 2000,
 		timeout = timeout,
 	})
 end
 
---- Process newly arrived terminal lines against general patterns.
-function compile.general.process_lines(lines, first_line)
+--- Map a logical (wrap-joined) span back to physical buffer coordinates.
+--- span = { 0-based start col, end col (exclusive) } within entry.text.
+--- Returns start_row, start_col, end_row, end_col (end exclusive).
+local function phys_span(entry, span)
+	local map = require("Ephemera.custom.runMode.utils").map_logical_pos
+	local sr, sc = map(entry, span[1] + 1)
+	local er, ec = map(entry, span[2] + 1)
+	return sr, sc, er, ec
+end
+
+--- Process newly arrived terminal output against general patterns.
+---@param logical_lines table[] entries { text, start_row, nseg, wrap }
+function compile.general.process_lines(logical_lines)
 	local patterns = (opts and opts.general_patterns) or {}
 	for name, spec in pairs(patterns) do
 		if type(spec) == "table" and spec.pattern and spec.pattern ~= "" then
-			for index, line in ipairs(lines) do
-				local m = compile.general.match_line(line, spec.pattern)
+			for _, entry in ipairs(logical_lines) do
+				local utils = require("Ephemera.custom.runMode.utils")
+				if utils.is_runmode_footer(entry.text) then
+					goto continue
+				end
+				local m = compile.general.match_line(entry.text, spec.pattern)
 				if m then
-					local row = first_line + index - 1
 					local buf = require("Ephemera.custom.runMode.term").state.buf
+					local mrow = phys_span(entry, m.span)
 
 					local function pick(which)
 						if which == nil or which == "match" then
@@ -145,8 +166,8 @@ function compile.general.process_lines(lines, first_line)
 					local ctx = {
 						name = name,
 						buf = buf,
-						row = row,
-						line = line,
+						row = mrow,
+						line = entry.text,
 						match = m.match,
 						span = m.span,
 						captures = m.captures,
@@ -154,13 +175,18 @@ function compile.general.process_lines(lines, first_line)
 						hl = function(group, which, priority)
 							local span = pick(which)
 							if span and vim.api.nvim_buf_is_valid(buf) then
-								pcall(vim.hl.range, buf, compile.general.state.ns, group, { row, span[1] }, { row, span[2] }, { priority = priority or 2000 })
+								local sr, sc, er, ec = phys_span(entry, span)
+								pcall(vim.hl.range, buf, compile.general.state.ns, group, { sr, sc }, { er, ec }, { priority = priority or 2000 })
 							end
 						end,
 						blink = function(group, timeout, which)
 							local span = pick(which)
 							if span then
-								compile.general.blink_span(buf, row, span[1], span[2], timeout, group)
+								local sr, sc, er, ec = phys_span(entry, span)
+								pcall(vim.hl.range, buf, compile.general.state.ns, group, { sr, sc }, { er, ec }, {
+									priority = 2000,
+									timeout = timeout or BLINK_MS,
+								})
 							end
 						end,
 					}
@@ -178,6 +204,7 @@ function compile.general.process_lines(lines, first_line)
 						end
 					end
 				end
+				::continue::
 			end
 		end
 	end

@@ -18,6 +18,8 @@ local compile = {}
 -- Last command used, persisted across sessions via shada (vim.g)
 compile.state = {
 	last_cmd = vim.g.runMode_last_cmd or vim.g.compileMode_last_cmd,
+	watch_enabled = false,
+	watch_file_dir = false,
 }
 
 -- Load submodules
@@ -28,14 +30,15 @@ compile.keymaps = require("Ephemera.custom.runMode.keymaps")
 compile.opts = require("Ephemera.custom.runMode.opts")
 compile.general = require("Ephemera.custom.runMode.general")
 
---- Dispatch newly arrived terminal lines to both the error and general handlers.
-function compile.process_lines(lines, first_line)
-	compile.highlight.process_lines(lines, first_line)
-	compile.general.process_lines(lines, first_line)
+--- Dispatch newly arrived terminal output to both the error and general handlers.
+--- Each entry is a logical (wrap-joined) line: { text, start_row, nseg, wrap }.
+function compile.process_lines(logical_lines)
+	compile.highlight.process_lines(logical_lines)
+	compile.general.process_lines(logical_lines)
 end
 
 --- Clears the terminal and reinitializes it.
---- This function effectively resets the compiler environment, removing any previous output and preparing it for a new compilation run.
+--- This function effectively resets the run environment, removing any previous output and preparing it for a new run.
 function compile.clear()
 	compile.utils.enter_wrapper(function()
 		compile.term.destroy()
@@ -52,18 +55,46 @@ function compile.clear_hl()
 end
 
 local function get_current_file_dir()
+	-- Ignore the RunMode terminal buffer: when focus sits in the terminal window
+	-- (enter = true), nvim_get_current_buf() is the terminal buffer itself,
+	-- which resolves to getcwd() and makes reruns land in the wrong directory.
+	-- The source file is usually not visible in any window once the terminal has
+	-- focus, so scan buffers (not windows) for a real file buffer.
+	local term_buf = compile.term.state.buf
+	local function is_source_buf(b)
+		if not vim.api.nvim_buf_is_valid(b) or b == term_buf then
+			return false
+		end
+		local name = vim.api.nvim_buf_get_name(b)
+		return name ~= "" and vim.fn.bufname(b) ~= "" and not vim.fn.bufname(b):match("(CompileTerm|RunMode)$")
+	end
+
 	local buf = vim.api.nvim_get_current_buf()
-	local buf_name = vim.api.nvim_buf_get_name(buf)
-	if buf_name and buf_name ~= "" then
-		local dir = vim.fn.fnamemodify(buf_name, ":p:h")
+	if not is_source_buf(buf) then
+		buf = nil
+		-- Prefer the alternate buffer (previous file window), then any listed file buffer.
+		local alt = vim.fn.bufnr("#")
+		if alt >= 1 and is_source_buf(alt) then
+			buf = alt
+		else
+			for _, b in ipairs(vim.api.nvim_list_bufs()) do
+				if is_source_buf(b) and vim.bo[b].buflisted then
+					buf = b
+					break
+				end
+			end
+		end
+	end
+	if buf then
+		local dir = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":p:h")
 		if vim.fn.isdirectory(dir) == 1 then
 			return dir
 		end
 	end
-	return vim.fn.getcwd()
+	return compile.state.last_cwd or vim.fn.getcwd()
 end
 
-_G.Ephemera_compile_complete = function(ArgLead, CmdLine, CursorPos)
+_G.Ephemera_run_complete = function(ArgLead, CmdLine, CursorPos)
 	local prefix, word = ArgLead:match("^(.*%s)(%S*)$")
 	if not prefix then
 		local cmds = vim.fn.getcompletion(ArgLead, "shellcmd")
@@ -81,7 +112,7 @@ _G.Ephemera_compile_complete = function(ArgLead, CmdLine, CursorPos)
 	end
 end
 
-_G.Ephemera_compile_complete_file_dir = function(ArgLead, CmdLine, CursorPos)
+_G.Ephemera_run_complete_file_dir = function(ArgLead, CmdLine, CursorPos)
 	local prefix, word = ArgLead:match("^(.*%s)(%S*)$")
 	if not prefix then
 		local cmds = vim.fn.getcompletion(ArgLead, "shellcmd")
@@ -219,39 +250,39 @@ local function detect_project_command(dir)
 	return nil
 end
 
---- Prompt for a compile command (always starts empty), then run it in project root (cwd).
+--- Prompt for a run command (always starts empty), then run it in project root (cwd).
 --- Autocompletes commands for the first word and files/dirs for arguments upon pressing <Tab>.
 --- Empty input / cancel does nothing and never touches last_cmd.
-function compile.compile_prompt()
+function compile.run_prompt()
 	local dir_display = format_truncated_path(vim.fn.getcwd())
 	local prompt_text = string.format("[%s] Run: ", dir_display)
 	local cmd = vim.fn.input({
 		prompt = prompt_text,
-		completion = "customlist,v:lua.Ephemera_compile_complete",
+		completion = "customlist,v:lua.Ephemera_run_complete",
 	})
 	if cmd and cmd:len() > 0 then
-		compile.compile(cmd)
+		compile.run(cmd)
 	end
 end
 
---- Prompt for a compile command (always starts empty) and run it in the directory of the currently open file (Shift-F6).
-function compile.compile_prompt_file_dir()
+--- Prompt for a run command (always starts empty) and run it in the directory of the currently open file (Shift-F6).
+function compile.run_prompt_file_dir()
 	local file_dir = get_current_file_dir()
 	local dir_display = format_truncated_path(file_dir)
 	local cmd = vim.fn.input({
 		prompt = string.format("[%s] Run: ", dir_display),
-		completion = "customlist,v:lua.Ephemera_compile_complete_file_dir",
+		completion = "customlist,v:lua.Ephemera_run_complete_file_dir",
 	})
 	if cmd and cmd:len() > 0 then
-		compile.compile(cmd, file_dir)
+		compile.run(cmd, file_dir)
 	end
 end
 
---- Re-run the last compile command in project root (cwd).
+--- Re-run the last command in project root (cwd).
 --- If none exists yet (F5), autodetects build system or standalone program, prefills the prompt with it, and asks the user (never auto-runs).
-function compile.recompile()
+function compile.run_last()
 	if compile.state.last_cmd and compile.state.last_cmd ~= "" then
-		compile.compile(compile.state.last_cmd)
+		compile.run(compile.state.last_cmd)
 	else
 		local detected = detect_project_command(vim.fn.getcwd()) or ""
 		local dir_display = format_truncated_path(vim.fn.getcwd())
@@ -259,20 +290,20 @@ function compile.recompile()
 		local cmd = vim.fn.input({
 			prompt = prompt_text,
 			default = detected,
-			completion = "customlist,v:lua.Ephemera_compile_complete",
+			completion = "customlist,v:lua.Ephemera_run_complete",
 		})
 		if cmd and cmd:len() > 0 then
-			compile.compile(cmd)
+			compile.run(cmd)
 		end
 	end
 end
 
---- Re-run the last compile command in current file directory (Shift-F5).
+--- Re-run the last command in the current file's directory (Shift-F5).
 --- If none exists yet, autodetects build system or standalone program in file dir, prefills the prompt, and asks the user (never auto-runs).
-function compile.recompile_file_dir()
+function compile.run_file_dir()
 	local file_dir = get_current_file_dir()
 	if compile.state.last_cmd and compile.state.last_cmd ~= "" then
-		compile.compile(compile.state.last_cmd, file_dir)
+		compile.run(compile.state.last_cmd, file_dir)
 	else
 		local detected = detect_project_command(file_dir) or ""
 		local dir_display = format_truncated_path(file_dir)
@@ -280,10 +311,10 @@ function compile.recompile_file_dir()
 		local cmd = vim.fn.input({
 			prompt = prompt_text,
 			default = detected,
-			completion = "customlist,v:lua.Ephemera_compile_complete_file_dir",
+			completion = "customlist,v:lua.Ephemera_run_complete_file_dir",
 		})
 		if cmd and cmd:len() > 0 then
-			compile.compile(cmd, file_dir)
+			compile.run(cmd, file_dir)
 		end
 	end
 end
@@ -298,7 +329,7 @@ local function prompt_save_modified_buffers()
 
 	if #modified_bufs > 0 then
 		local choice = vim.fn.confirm(
-			string.format("Save %d modified buffer(s) before compiling?", #modified_bufs),
+			string.format("Save %d modified buffer(s) before running?", #modified_bufs),
 			"&Yes\n&No",
 			1
 		)
@@ -308,29 +339,36 @@ local function prompt_save_modified_buffers()
 	end
 end
 
---- Prompt for a compile command and directly launch it in watch mode (Alt-F6).
-function compile.compile_watch_prompt()
+--- Prompt for a run command and directly launch it in watch mode (Alt-F6).
+function compile.run_watch_prompt()
 	local dir_display = format_truncated_path(vim.fn.getcwd())
 	local prompt_text = string.format("[%s] (Watch) Run: ", dir_display)
 	local cmd = vim.fn.input({
 		prompt = prompt_text,
-		completion = "customlist,v:lua.Ephemera_compile_complete",
+		completion = "customlist,v:lua.Ephemera_run_complete",
 	})
 	if cmd and cmd:len() > 0 then
 		compile.enable_watch()
-		compile.compile(cmd)
+		compile.run(cmd)
 	end
 end
 
---- Enables watch mode (auto-compile on buffer save).
-function compile.enable_watch()
+--- Enables watch mode (auto-run on buffer save).
+---@param file_dir_mode boolean|nil When true, watch re-runs resolve and use the
+--- directory of the currently open file at save time instead of the cwd.
+function compile.enable_watch(file_dir_mode)
 	compile.state.watch_enabled = true
+	compile.state.watch_file_dir = file_dir_mode or false
 	local group = vim.api.nvim_create_augroup("RunWatch", { clear = true })
 	vim.api.nvim_create_autocmd("BufWritePost", {
 		group = group,
 		callback = function()
 			if compile.state.last_cmd then
-				compile.compile(compile.state.last_cmd)
+				if compile.state.watch_file_dir then
+					compile.run(compile.state.last_cmd, get_current_file_dir())
+				else
+					compile.run(compile.state.last_cmd)
+				end
 			end
 		end,
 	})
@@ -339,19 +377,38 @@ end
 --- Disables watch mode.
 function compile.disable_watch()
 	compile.state.watch_enabled = false
+	compile.state.watch_file_dir = false
 	pcall(vim.api.nvim_del_augroup_by_name, "RunWatch")
 end
 
---- Toggle watch mode: automatically re-runs last compile command whenever a file is saved.
+--- Toggle watch mode: automatically re-runs the last command whenever a file is saved.
+--- Watch runs land in the project root (cwd).
 function compile.toggle_watch()
 	if compile.state.watch_enabled then
 		compile.disable_watch()
 		vim.notify("Watch mode: DISABLED", vim.log.levels.INFO)
 	else
-		compile.enable_watch()
-		vim.notify("Watch mode: ENABLED (auto-compile on save)", vim.log.levels.INFO)
+		compile.enable_watch(false)
+		vim.notify("Watch mode: ENABLED (auto-run on save)", vim.log.levels.INFO)
 		if compile.state.last_cmd then
-			compile.compile(compile.state.last_cmd)
+			compile.run(compile.state.last_cmd)
+		end
+	end
+end
+
+--- Toggle watch mode in the current file's directory (Shift-W).
+--- Watch re-runs resolve the directory of the currently open file at each save,
+--- exactly like Shift-F5 does for single runs. Repeating the keypress turns it off.
+function compile.toggle_watch_file_dir()
+	if compile.state.watch_enabled then
+		compile.disable_watch()
+		vim.notify("Watch mode: DISABLED", vim.log.levels.INFO)
+	else
+		compile.enable_watch(true)
+		local dir_display = format_truncated_path(get_current_file_dir())
+		vim.notify(("Watch mode: ENABLED in [%s] (auto-run on save)"):format(dir_display), vim.log.levels.INFO)
+		if compile.state.last_cmd then
+			compile.run(compile.state.last_cmd, get_current_file_dir())
 		end
 	end
 end
@@ -371,7 +428,7 @@ function compile.export_to_qf()
 				filename = err.file.val,
 				lnum = err.row.val or 1,
 				col = err.col.val or 0,
-				text = "Compiler error/warning",
+				text = "Error/warning",
 				type = "E",
 			})
 		end
@@ -383,14 +440,15 @@ function compile.export_to_qf()
 	vim.notify(string.format("Exported %d error(s) to Quickfix", #qf_list), vim.log.levels.INFO)
 end
 
---- Compiles the project and captures errors in the terminal.
+--- Runs the command and captures its output/errors in the terminal.
 ---@param cmd string The command to execute.
 ---@param cwd string|nil The working directory to execute the command in.
-function compile.compile(cmd, cwd)
+function compile.run(cmd, cwd)
 	-- Prompt to save modified buffers (if any exist)
 	prompt_save_modified_buffers()
 
 	compile.state.last_cmd = cmd
+	compile.state.last_cwd = cwd or vim.fn.getcwd()
 	vim.g.runMode_last_cmd = cmd
 	compile.utils.enter_wrapper(function()
 		compile.term.destroy()
@@ -404,8 +462,13 @@ function compile.compile(cmd, cwd)
 		if cwd and cwd ~= "" then
 			vim.api.nvim_chan_send(compile.term.state.channel, "cd " .. vim.fn.fnameescape(cwd) .. terminator)
 		end
-		compile.term.send_cmd("clear")
-		compile.term.send_cmd(cmd)
+		-- Run with a fresh-ish screen (clear pushes the previous prompt/output back)
+		-- and finish with a single-line emacs-style footer (finish time + elapsed +
+		-- exit code on failure). The footer text is produced by the `runmode_footer`
+		-- fish function so the visible command line stays short and the terminal
+		-- stays fully normal.
+		local footer = "runmode_footer $status $t0"
+		compile.term.send_cmd("clear; set -l t0 (date +%s%3N); " .. cmd .. "; " .. footer)
 	end)
 end
 
@@ -427,34 +490,56 @@ local function get_link_at_cursor()
 		win = vim.api.nvim_get_current_win()
 	end
 	local cursor = vim.api.nvim_win_get_cursor(win)
-	local line = vim.api.nvim_buf_get_lines(buf, cursor[1] - 1, cursor[1], false)[1] or ""
-	local col = cursor[2] + 1
+	local logical = compile.term.get_logical_at(cursor[1], cursor[2])
+	if not logical then
+		return nil
+	end
+
+	local col = logical.cursor_off + 1
+	local links = compile.general.match_links(logical.text)
 
 	-- 1. Link under the cursor
-	for _, link in ipairs(compile.general.match_links(line)) do
+	for _, link in ipairs(links) do
 		if col >= link.start and col <= link.finish then
-			return link, buf, cursor[1]
+			return link, buf, logical
 		end
 	end
 	-- 2. Next link after the cursor
-	for _, link in ipairs(compile.general.match_links(line)) do
+	for _, link in ipairs(links) do
 		if link.start >= col then
-			return link, buf, cursor[1]
+			return link, buf, logical
 		end
 	end
 	return nil
 end
 
+--- Map a 1-based offset inside a logical (wrap-joined) line back to physical
+--- (row, col0), so blinks land on the right buffer row even for wrapped links.
+local function logical_to_phys(logical, off1)
+	local off = off1 - 1
+	local acc = 0
+	for i, row in ipairs(logical.seg_rows) do
+		local len = logical.seg_sizes[i]
+		if off < acc + len then
+			return row, off - acc
+		end
+		acc = acc + len
+	end
+	return logical.seg_rows[#logical.seg_rows] or 1, 0
+end
+
 --- Opens the link under (or after) the cursor in the run terminal using the OS
---- opener, blinking it in the link color first.
+--- opener, flashing it in the link color first.
 function compile.open_link()
-	local link, buf, row = get_link_at_cursor()
+	local link, buf, logical = get_link_at_cursor()
 	if not link then
 		vim.notify("Run: No link found at cursor", vim.log.levels.WARN)
 		return
 	end
 
-	compile.general.blink_span(buf, row, link.start - 1, link.finish, 300)
+	local sr, sc = logical_to_phys(logical, link.start)
+	local _, ec = logical_to_phys(logical, link.finish + 1)
+	compile.general.blink_span(buf, sr, sc, ec, 300)
 
 	local sysname = vim.loop.os_uname().sysname
 	local cmd
@@ -475,12 +560,14 @@ function compile.enter_action()
 	local win = compile.term.state.win
 	if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_win_is_valid(win) then
 		local cursor = vim.api.nvim_win_get_cursor(win)
-		local line = vim.api.nvim_buf_get_lines(buf, cursor[1] - 1, cursor[1], false)[1] or ""
-		local col = cursor[2] + 1
-		for _, link in ipairs(compile.general.match_links(line)) do
-			if col >= link.start and col <= link.finish then
-				compile.open_link()
-				return
+		local logical = compile.term.get_logical_at(cursor[1], cursor[2])
+		if logical then
+			local col = logical.cursor_off + 1
+			for _, link in ipairs(compile.general.match_links(logical.text)) do
+				if col >= link.start and col <= link.finish then
+					compile.open_link()
+					return
+				end
 			end
 		end
 	end

@@ -17,11 +17,17 @@ compile.highlight.ns = vim.api.nvim_create_namespace("TermHl")
 
 local function setup_run_blink()
 	local orange = "#bb1111"
+	local red = "#ff5555"
 	vim.api.nvim_set_hl(0, "RunBlink", {
         fg = "#000000",
 		bg = orange,
 		bold = true,
 		italic = true,
+	})
+	-- Persistent error-file/row/col highlighting (red, not the yellowish defaults)
+	vim.api.nvim_set_hl(0, "RunError", {
+		fg = red,
+		bold = true,
 	})
 end
 
@@ -104,130 +110,57 @@ function compile.highlight.last_warning()
 end
 
 -- Process new terminal lines for warnings
-local function highlight_extract(location_pattern, lines, first_line)
-	local pattern = location_pattern[1]
-	local positions = require("Ephemera.custom.runMode.utils").split_to_num(location_pattern[2])
-	local term_buf = require("Ephemera.custom.runMode.term").state.buf
-
-	if #positions == 2 then
-		for index, line in ipairs(lines) do
-			local a, b = string.match(line, pattern)
-			if not (a and b) then
-				goto continue
-			end
-
-			local as, ae = string.find(line, a, 1, true)
-			as = as or 1
-			ae = ae or #a
-
-			local bs, be = string.find(line, b, ae + 1, true)
-			if not bs then
-				bs, be = string.find(line, b, 1, true)
-			end
-			bs = bs or (ae + 1)
-			be = be or (bs + #b - 1)
-
-			local sorted = {}
-			sorted[positions[1]] = { a, as, ae }
-			sorted[positions[2]] = { b, bs, be }
-
-			local formatted = {}
-			formatted["file"] = {
-				val = sorted[1][1],
-				pos = { { first_line + index - 1, sorted[1][2] - 1 }, { first_line + index - 1, sorted[1][3] } },
-			}
-			formatted["row"] = {
-				val = tonumber(sorted[2][1]) or 1,
-				pos = { { first_line + index - 1, sorted[2][2] - 1 }, { first_line + index - 1, sorted[2][3] } },
-			}
-			formatted["col"] = {
-				val = 0,
-				pos = { { first_line + index - 1, sorted[2][2] - 1 }, { first_line + index - 1, sorted[2][3] } },
-			}
-
-			-- Apply highlights if buffer is valid
-			if vim.api.nvim_buf_is_valid(term_buf) then
-				pcall(vim.hl.range,
-					term_buf,
-					compile.highlight.ns,
-					opts.colors.file,
-					formatted.file.pos[1],
-					formatted.file.pos[2]
-				)
-				pcall(vim.hl.range,
-					term_buf,
-					compile.highlight.ns,
-					opts.colors.row,
-					formatted.row.pos[1],
-					formatted.row.pos[2]
-				)
-			end
-
-			-- Store warning (preventing duplicate matches on the same terminal line)
-			local key = formatted.file.val .. ":" .. formatted.row.val .. ":" .. formatted.col.val
-			if not compile.highlight.state.warning_list[key] then
-				local line_num = formatted.file.pos[1][1]
-				local already_exists = false
-				for _, existing_key in ipairs(compile.highlight.state.warning_index) do
-					local existing = compile.highlight.state.warning_list[existing_key]
-					if existing and existing.file.pos[1][1] == line_num and existing.file.val == formatted.file.val and existing.row.val == formatted.row.val then
-						already_exists = true
-						break
-					end
-				end
-
-				if not already_exists then
-					compile.highlight.state.warning_list[key] = formatted
-					table.insert(compile.highlight.state.warning_index, key)
-				end
-			end
-
-			::continue::
-		end
+-- Each entry is a logical (wrap-joined) line: { text, start_row, nseg, wrap }.
+-- Match offsets (from string.find) are logical byte positions; they are mapped
+-- back to physical buffer rows/cols so highlights and goto positions stay exact
+-- even when the PTY hard-wrapped a long compiler line across several rows.
+local function highlight_extract(location_pattern, entry)
+	local utils = require("Ephemera.custom.runMode.utils")
+	if utils.is_runmode_footer(entry.text) then
 		return
 	end
+	local pattern = location_pattern[1]
+	local positions = utils.split_to_num(location_pattern[2])
+	local term_buf = require("Ephemera.custom.runMode.term").state.buf
+	local map = utils.map_logical_pos
 
-	for index, line in ipairs(lines) do
-		local a, b, c = string.match(line, pattern)
-		if not (a and b and c) then
-			goto continue
+	if #positions == 2 then
+		local a, b = string.match(entry.text, pattern)
+		if not (a and b) then
+			return
 		end
 
-		local as, ae = string.find(line, a, 1, true)
+		local as, ae = string.find(entry.text, a, 1, true)
 		as = as or 1
 		ae = ae or #a
 
-		local bs, be = string.find(line, b, ae + 1, true)
+		local bs, be = string.find(entry.text, b, ae + 1, true)
 		if not bs then
-			bs, be = string.find(line, b, 1, true)
+			bs, be = string.find(entry.text, b, 1, true)
 		end
 		bs = bs or (ae + 1)
 		be = be or (bs + #b - 1)
 
-		local cs, ce = string.find(line, c, be + 1, true)
-		if not cs then
-			cs, ce = string.find(line, c, 1, true)
-		end
-		cs = cs or (be + 1)
-		ce = ce or (cs + #c - 1)
-
 		local sorted = {}
 		sorted[positions[1]] = { a, as, ae }
 		sorted[positions[2]] = { b, bs, be }
-		sorted[positions[3]] = { c, cs, ce }
 
 		local formatted = {}
+		local f_r, f_c = map(entry, sorted[1][2])
+		local f_r2, f_c2 = map(entry, sorted[1][3] + 1)
 		formatted["file"] = {
 			val = sorted[1][1],
-			pos = { { first_line + index - 1, sorted[1][2] - 1 }, { first_line + index - 1, sorted[1][3] } },
+			pos = { { f_r, f_c }, { f_r2, f_c2 } },
 		}
+		local r_r, r_c = map(entry, sorted[2][2])
+		local r_r2, r_c2 = map(entry, sorted[2][3] + 1)
 		formatted["row"] = {
 			val = tonumber(sorted[2][1]) or 1,
-			pos = { { first_line + index - 1, sorted[2][2] - 1 }, { first_line + index - 1, sorted[2][3] } },
+			pos = { { r_r, r_c }, { r_r2, r_c2 } },
 		}
 		formatted["col"] = {
-			val = tonumber(sorted[3][1]) or 0,
-			pos = { { first_line + index - 1, sorted[3][2] - 1 }, { first_line + index - 1, sorted[3][3] } },
+			val = 0,
+			pos = { { r_r, r_c }, { r_r2, r_c2 } },
 		}
 
 		-- Apply highlights if buffer is valid
@@ -245,13 +178,6 @@ local function highlight_extract(location_pattern, lines, first_line)
 				opts.colors.row,
 				formatted.row.pos[1],
 				formatted.row.pos[2]
-			)
-			pcall(vim.hl.range,
-				term_buf,
-				compile.highlight.ns,
-				opts.colors.col,
-				formatted.col.pos[1],
-				formatted.col.pos[2]
 			)
 		end
 
@@ -273,15 +199,111 @@ local function highlight_extract(location_pattern, lines, first_line)
 				table.insert(compile.highlight.state.warning_index, key)
 			end
 		end
+		return
+	end
 
-		::continue::
+	local a, b, c = string.match(entry.text, pattern)
+	if not (a and b and c) then
+		return
+	end
+
+	local as, ae = string.find(entry.text, a, 1, true)
+	as = as or 1
+	ae = ae or #a
+
+	local bs, be = string.find(entry.text, b, ae + 1, true)
+	if not bs then
+		bs, be = string.find(entry.text, b, 1, true)
+	end
+	bs = bs or (ae + 1)
+	be = be or (bs + #b - 1)
+
+	local cs, ce = string.find(entry.text, c, be + 1, true)
+	if not cs then
+		cs, ce = string.find(entry.text, c, 1, true)
+	end
+	cs = cs or (be + 1)
+	ce = ce or (cs + #c - 1)
+
+	local sorted = {}
+	sorted[positions[1]] = { a, as, ae }
+	sorted[positions[2]] = { b, bs, be }
+	sorted[positions[3]] = { c, cs, ce }
+
+	local formatted = {}
+	local f_r, f_c = map(entry, sorted[1][2])
+	local f_r2, f_c2 = map(entry, sorted[1][3] + 1)
+	formatted["file"] = {
+		val = sorted[1][1],
+		pos = { { f_r, f_c }, { f_r2, f_c2 } },
+	}
+	local r_r, r_c = map(entry, sorted[2][2])
+	local r_r2, r_c2 = map(entry, sorted[2][3] + 1)
+	formatted["row"] = {
+		val = tonumber(sorted[2][1]) or 1,
+		pos = { { r_r, r_c }, { r_r2, r_c2 } },
+	}
+	local c_r, c_c = map(entry, sorted[3][2])
+	local c_r2, c_c2 = map(entry, sorted[3][3] + 1)
+	formatted["col"] = {
+		val = tonumber(sorted[3][1]) or 0,
+		pos = { { c_r, c_c }, { c_r2, c_c2 } },
+	}
+
+	-- Apply highlights if buffer is valid
+	if vim.api.nvim_buf_is_valid(term_buf) then
+		pcall(vim.hl.range,
+			term_buf,
+			compile.highlight.ns,
+			opts.colors.file,
+			formatted.file.pos[1],
+			formatted.file.pos[2]
+		)
+		pcall(vim.hl.range,
+			term_buf,
+			compile.highlight.ns,
+			opts.colors.row,
+			formatted.row.pos[1],
+			formatted.row.pos[2]
+		)
+		pcall(vim.hl.range,
+			term_buf,
+			compile.highlight.ns,
+			opts.colors.col,
+			formatted.col.pos[1],
+			formatted.col.pos[2]
+		)
+	end
+
+	-- Store warning (preventing duplicate matches on the same terminal line)
+	local key = formatted.file.val .. ":" .. formatted.row.val .. ":" .. formatted.col.val
+	if not compile.highlight.state.warning_list[key] then
+		local line_num = formatted.file.pos[1][1]
+		local already_exists = false
+		for _, existing_key in ipairs(compile.highlight.state.warning_index) do
+			local existing = compile.highlight.state.warning_list[existing_key]
+			if existing and existing.file.pos[1][1] == line_num and existing.file.val == formatted.file.val and existing.row.val == formatted.row.val then
+				already_exists = true
+				break
+			end
+		end
+
+		if not already_exists then
+			compile.highlight.state.warning_list[key] = formatted
+			table.insert(compile.highlight.state.warning_index, key)
+		end
 	end
 end
 
---- Process incoming terminal lines
-function compile.highlight.process_lines(lines, first_line)
-	for _, location_pattern in pairs(opts.patterns) do
-		highlight_extract(location_pattern, lines, first_line)
+--- Process incoming terminal output
+---@param logical_lines table[] entries { text, start_row, nseg, wrap }
+function compile.highlight.process_lines(logical_lines)
+	local pattern_keys = vim.tbl_keys(opts.patterns)
+	table.sort(pattern_keys)
+	for _, key in ipairs(pattern_keys) do
+		for _, entry in ipairs(logical_lines) do
+			highlight_extract(opts.patterns[key], entry)
+		end
 	end
 end
 

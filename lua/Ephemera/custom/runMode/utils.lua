@@ -34,6 +34,16 @@ function compile.utils.split_to_num(str)
 	return num_table
 end
 
+local FOOTER_MARK = "── Finished "
+
+--- True when a terminal line is the plugin's own footer line. The footer is
+--- plugin UI, so its content must never be claimed by compiler error/warning
+--- patterns (e.g. the HH:MM:SS finish time matches grep-style "(%S+):(%d+):"
+--- patterns and would highlight as a fake error).
+function compile.utils.is_runmode_footer(line)
+	return type(line) == "string" and line:sub(1, #FOOTER_MARK) == FOOTER_MARK
+end
+
 --- Get valid non-terminal window
 function compile.utils.get_normal_win()
 	local term_win = require("Ephemera.custom.runMode.term").state.win
@@ -72,6 +82,26 @@ function compile.utils.get_normal_win()
 	local win = vim.api.nvim_open_win(buf, false, require("Ephemera.custom.runMode").opts.normal_win_opts)
 	vim.api.nvim_set_option_value("number", true, { win = win })
 	return win
+end
+
+--- Map a 1-based byte offset within a logical (wrap-joined) line to a
+--- physical buffer (row, col0). Non-wrapped lines (nseg == 1) map to
+--- start_row with the identity col, preserving pre-wrap behavior exactly.
+---@param entry table { text, start_row, nseg, wrap }
+---@param o1 number 1-based byte offset into entry.text
+function compile.utils.map_logical_pos(entry, o1)
+	local off = (o1 or 1) - 1
+	local seg = 1
+	if entry.nseg and entry.wrap and entry.wrap > 0 then
+		seg = math.floor(off / entry.wrap) + 1
+		if seg > entry.nseg then
+			seg = entry.nseg
+		end
+		if seg < 1 then
+			seg = 1
+		end
+	end
+	return entry.start_row + seg - 1, math.max(0, off - (seg - 1) * (entry.wrap or 0))
 end
 
 --- Binary search index

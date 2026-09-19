@@ -9,7 +9,7 @@ compile.keymaps = {}
 
 --- Setup keybindings for plugin
 function compile.keymaps.setup(opts)
-	local term_group = vim.api.nvim_create_augroup("Compile", { clear = true })
+	local term_group = vim.api.nvim_create_augroup("RunMode", { clear = true })
 
 	-- Global keymaps
 	for modes, keymap in pairs(opts.keys.global) do

@@ -24,7 +24,7 @@
             },
 
             ---@type boolean
-            -- Set this to `true` if you want to jump into the terminal when you run compile command
+            -- Set this to `true` if you want to jump into the terminal when you run a command
             enter = true,
 
             highlight_under_cursor = {
@@ -192,9 +192,9 @@
             colors = {
                 -- Customize the highlight colors for different parts of the error message.
                 -- These correspond to Neovim highlight groups.
-                file = "WarningMsg",
-                row = "CursorLineNr",
-                col = "CursorLineNr",
+                file = "RunError",
+                row = "RunError",
+                col = "RunError",
             },
 
             keys = {
@@ -207,21 +207,23 @@
                         ["<localleader>c"] = "require('Ephemera.custom.runMode').term.toggle()",
                         -- jump/focus to the compilation window
                         ["<localleader>cf"] = "require('Ephemera.custom.runMode').term.jump_to()",
-                        -- toggle watch mode (auto-compile on save)
+                        -- toggle watch mode (auto-run on save)
                         ["<localleader>cw"] = "require('Ephemera.custom.runMode').toggle_watch()",
+                        -- toggle watch mode in the current file's directory
+                        ["<localleader>cW"] = "require('Ephemera.custom.runMode').toggle_watch_file_dir()",
                         -- kill and close the compilation buffer
                         ["<localleader>cx"] = "require('Ephemera.custom.runMode').destroy()",
-                        -- Emacs-style compile: F5 reruns last command (prompts if none), F6 always prompts
-                        ["<F5>"] = "require('Ephemera.custom.runMode').recompile()",
-                        ["<F6>"] = "require('Ephemera.custom.runMode').compile_prompt()",
-                        -- Shift-F5 / Shift-F6: compile in directory of currently open file
-                        ["<S-F5>"] = "require('Ephemera.custom.runMode').recompile_file_dir()",
-                        ["<F17>"] = "require('Ephemera.custom.runMode').recompile_file_dir()",
-                        ["<S-F6>"] = "require('Ephemera.custom.runMode').compile_prompt_file_dir()",
-                        ["<F18>"] = "require('Ephemera.custom.runMode').compile_prompt_file_dir()",
-                        -- Alt-F6: compile prompt directly launching in watch mode
-                        ["<A-F6>"] = "require('Ephemera.custom.runMode').compile_watch_prompt()",
-                        ["<M-F6>"] = "require('Ephemera.custom.runMode').compile_watch_prompt()",
+                        -- Emacs-style run: F5 re-runs the last command (prompts if none), F6 always prompts
+                        ["<F5>"] = "require('Ephemera.custom.runMode').run_last()",
+                        ["<F6>"] = "require('Ephemera.custom.runMode').run_prompt()",
+                        -- Shift-F5 / Shift-F6: run in directory of currently open file
+                        ["<S-F5>"] = "require('Ephemera.custom.runMode').run_file_dir()",
+                        ["<F17>"] = "require('Ephemera.custom.runMode').run_file_dir()",
+                        ["<S-F6>"] = "require('Ephemera.custom.runMode').run_prompt_file_dir()",
+                        ["<F18>"] = "require('Ephemera.custom.runMode').run_prompt_file_dir()",
+                        -- Alt-F6: run prompt directly launching in watch mode
+                        ["<A-F6>"] = "require('Ephemera.custom.runMode').run_watch_prompt()",
+                        ["<M-F6>"] = "require('Ephemera.custom.runMode').run_watch_prompt()",
                     },
                 },
                 term = {
@@ -241,6 +243,8 @@
                             -- quit the terminal.
                             ["q"] = "require('Ephemera.custom.runMode').destroy()",
                             ["w"] = "require('Ephemera.custom.runMode').toggle_watch()",
+                            -- Shift-W: watch mode in the current file's dir (repeatable, like F5)
+                            ["<S-w>"] = "require('Ephemera.custom.runMode').toggle_watch_file_dir()",
                             ["s"] = "require('Ephemera.custom.runMode').term.cycle_split()",
                             ["Q"] = "require('Ephemera.custom.runMode').export_to_qf()",
                             ["n"] = "require('Ephemera.custom.runMode').next_error()",
