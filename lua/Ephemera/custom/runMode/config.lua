@@ -2,7 +2,7 @@
 
         compile.setup({
             -- Give your terminal a custom name.
-            term_win_name = "Compilation",
+            term_win_name = "RunMode",
 
             ---@type vim.api.keyset.win_config
             term_win_opts = {
@@ -248,8 +248,8 @@
                             ["f"] = "require('Ephemera.custom.runMode').first_error()",
                             ["l"] = "require('Ephemera.custom.runMode').last_error()",
                             ["o"] = "require('Ephemera.custom.runMode').preview_nearest_error()",
-                            -- Jump to the nearest error under or before your cursor and close term
-                            ["<Cr>"] = "require('Ephemera.custom.runMode').nearest_error()",
+                            -- Opens a link under the cursor, otherwise jumps to the nearest error
+                            ["<Cr>"] = "require('Ephemera.custom.runMode').enter_action()",
                         },
                         -- Tricks to clear warning/error list
                         ["t"] = {

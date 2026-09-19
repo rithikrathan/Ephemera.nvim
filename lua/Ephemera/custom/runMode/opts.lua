@@ -62,6 +62,16 @@ return {
 		col = "CursorLineNr",
 	},
 
+	--- Non-error patterns (links, etc.). Matches are handed to general handlers.
+	--- Each spec: { pattern = "...", handler?, hl?, blink? }
+	general_patterns = {
+		-- Openable links: no auto-blink on match; <CR> in the run terminal
+		-- blinks + opens the link under the cursor.
+		url = {
+			pattern = '[%w][%w+.-]*://[%w%.~:/%?#%[%]@!$&\'()*+,;=%%-]+',
+		},
+	},
+
 	keys = {
 		global = {
 			["n"] = {

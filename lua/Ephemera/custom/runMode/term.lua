@@ -211,7 +211,7 @@ function compile.term.attach_event()
 				first_line = compile.term.state.last_line
 			end
 			local lines = vim.api.nvim_buf_get_lines(compile.term.state.buf, first_line, last_line, false)
-			require("Ephemera.custom.runMode.highlight").process_lines(lines, first_line)
+			require("Ephemera.custom.runMode").process_lines(lines, first_line)
 		end,
 	})
 end

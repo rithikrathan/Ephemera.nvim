@@ -26,6 +26,13 @@ compile.utils = require("Ephemera.custom.runMode.utils")
 compile.highlight = require("Ephemera.custom.runMode.highlight")
 compile.keymaps = require("Ephemera.custom.runMode.keymaps")
 compile.opts = require("Ephemera.custom.runMode.opts")
+compile.general = require("Ephemera.custom.runMode.general")
+
+--- Dispatch newly arrived terminal lines to both the error and general handlers.
+function compile.process_lines(lines, first_line)
+	compile.highlight.process_lines(lines, first_line)
+	compile.general.process_lines(lines, first_line)
+end
 
 --- Clears the terminal and reinitializes it.
 --- This function effectively resets the compiler environment, removing any previous output and preparing it for a new compilation run.
@@ -131,8 +138,48 @@ end
 
 local function detect_project_command(dir)
 	dir = dir or vim.fn.getcwd()
-	local checks = {
-		{ file = "Cargo.toml", cmd = "cargo check" },
+
+	-- 1. Check current active buffer for standalone program commands
+	local buf = vim.api.nvim_get_current_buf()
+	local buf_name = vim.api.nvim_buf_get_name(buf)
+	if buf_name and buf_name ~= "" then
+		local filename = vim.fn.fnamemodify(buf_name, ":t")
+		local stem = vim.fn.fnamemodify(buf_name, ":t:r")
+		local ext = vim.fn.fnamemodify(buf_name, ":e"):lower()
+
+		if filename == "nob.c" then
+			return "cc -o nob nob.c && ./nob"
+		elseif ext == "c" then
+			return string.format("gcc -Wall -Wextra %s -o %s && ./%s", filename, stem, stem)
+		elseif ext == "cpp" or ext == "cc" or ext == "cxx" then
+			return string.format("g++ -std=c++20 -Wall -Wextra %s -o %s && ./%s", filename, stem, stem)
+		elseif ext == "py" then
+			return "python3 " .. filename
+		elseif ext == "rs" then
+			return string.format("rustc %s -o %s && ./%s", filename, stem, stem)
+		elseif ext == "zig" then
+			return "zig run " .. filename
+		elseif ext == "go" then
+			return "go run " .. filename
+		elseif ext == "sh" or ext == "bash" then
+			return "bash " .. filename
+		elseif ext == "lua" then
+			return "lua " .. filename
+		elseif ext == "js" then
+			return "node " .. filename
+		elseif ext == "ts" then
+			return "bun " .. filename
+		elseif ext == "java" then
+			return string.format("javac %s && java %s", filename, stem)
+		elseif ext == "hs" then
+			return "runghc " .. filename
+		end
+	end
+
+	-- 2. Check project build files in dir
+	local project_checks = {
+		{ file = "nob.c", cmd = "cc -o nob nob.c && ./nob" },
+		{ file = "Cargo.toml", cmd = "cargo build" },
 		{ file = "Makefile", cmd = "make" },
 		{ file = "makefile", cmd = "make" },
 		{ file = "CMakeLists.txt", cmd = "cmake --build build" },
@@ -140,13 +187,35 @@ local function detect_project_command(dir)
 		{ file = "go.mod", cmd = "go build ." },
 		{ file = "build.zig", cmd = "zig build" },
 		{ file = "pyproject.toml", cmd = "python3 -m pytest" },
+		{ file = "requirements.txt", cmd = "python3 -m pytest" },
 		{ file = "compile_commands.json", cmd = "ninja" },
+		{ file = "Justfile", cmd = "just" },
+		{ file = "justfile", cmd = "just" },
 	}
-	for _, check in ipairs(checks) do
+	for _, check in ipairs(project_checks) do
 		if vim.fn.filereadable(dir .. "/" .. check.file) == 1 then
 			return check.cmd
 		end
 	end
+
+	-- 3. Check standalone files in dir
+	local standalone_checks = {
+		{ file = "main.c", cmd = "gcc -Wall -Wextra main.c -o main && ./main" },
+		{ file = "main.cpp", cmd = "g++ -std=c++20 main.cpp -o main && ./main" },
+		{ file = "main.py", cmd = "python3 main.py" },
+		{ file = "app.py", cmd = "python3 app.py" },
+		{ file = "main.rs", cmd = "rustc main.rs -o main && ./main" },
+		{ file = "main.zig", cmd = "zig run main.zig" },
+		{ file = "main.go", cmd = "go run main.go" },
+		{ file = "index.js", cmd = "node index.js" },
+		{ file = "index.ts", cmd = "bun index.ts" },
+	}
+	for _, check in ipairs(standalone_checks) do
+		if vim.fn.filereadable(dir .. "/" .. check.file) == 1 then
+			return check.cmd
+		end
+	end
+
 	return nil
 end
 
@@ -179,7 +248,7 @@ function compile.compile_prompt_file_dir()
 end
 
 --- Re-run the last compile command in project root (cwd).
---- If none exists yet (F5), autodetects the build tool, prefills the prompt with it, and asks the user (never auto-runs).
+--- If none exists yet (F5), autodetects build system or standalone program, prefills the prompt with it, and asks the user (never auto-runs).
 function compile.recompile()
 	if compile.state.last_cmd and compile.state.last_cmd ~= "" then
 		compile.compile(compile.state.last_cmd)
@@ -199,7 +268,7 @@ function compile.recompile()
 end
 
 --- Re-run the last compile command in current file directory (Shift-F5).
---- If none exists yet, autodetects the build tool in file dir, prefills the prompt, and asks the user (never auto-runs).
+--- If none exists yet, autodetects build system or standalone program in file dir, prefills the prompt, and asks the user (never auto-runs).
 function compile.recompile_file_dir()
 	local file_dir = get_current_file_dir()
 	if compile.state.last_cmd and compile.state.last_cmd ~= "" then
@@ -335,6 +404,7 @@ function compile.compile(cmd, cwd)
 		if cwd and cwd ~= "" then
 			vim.api.nvim_chan_send(compile.term.state.channel, "cd " .. vim.fn.fnameescape(cwd) .. terminator)
 		end
+		compile.term.send_cmd("clear")
 		compile.term.send_cmd(cmd)
 	end)
 end
@@ -345,6 +415,76 @@ function compile.destroy()
 		compile.term.destroy()
 		compile.highlight.clear_hl_warning()
 	end)
+end
+
+local function get_link_at_cursor()
+	local buf = compile.term.state.buf
+	if not buf or not vim.api.nvim_buf_is_valid(buf) then
+		return nil
+	end
+	local win = compile.term.state.win
+	if not vim.api.nvim_win_is_valid(win) then
+		win = vim.api.nvim_get_current_win()
+	end
+	local cursor = vim.api.nvim_win_get_cursor(win)
+	local line = vim.api.nvim_buf_get_lines(buf, cursor[1] - 1, cursor[1], false)[1] or ""
+	local col = cursor[2] + 1
+
+	-- 1. Link under the cursor
+	for _, link in ipairs(compile.general.match_links(line)) do
+		if col >= link.start and col <= link.finish then
+			return link, buf, cursor[1]
+		end
+	end
+	-- 2. Next link after the cursor
+	for _, link in ipairs(compile.general.match_links(line)) do
+		if link.start >= col then
+			return link, buf, cursor[1]
+		end
+	end
+	return nil
+end
+
+--- Opens the link under (or after) the cursor in the run terminal using the OS
+--- opener, blinking it in the link color first.
+function compile.open_link()
+	local link, buf, row = get_link_at_cursor()
+	if not link then
+		vim.notify("Run: No link found at cursor", vim.log.levels.WARN)
+		return
+	end
+
+	compile.general.blink_span(buf, row, link.start - 1, link.finish, 300)
+
+	local sysname = vim.loop.os_uname().sysname
+	local cmd
+	if sysname == "Darwin" then
+		cmd = { "open", link.text }
+	elseif sysname == "Windows_NT" then
+		cmd = { "cmd", "/c", "start", "", link.text }
+	else
+		cmd = { "xdg-open", link.text }
+	end
+	vim.fn.jobstart(cmd, { detach = true })
+end
+
+--- <CR> handler in the run terminal: opens a link under the cursor, otherwise
+--- falls through to jumping to the nearest error (existing behavior).
+function compile.enter_action()
+	local buf = compile.term.state.buf
+	local win = compile.term.state.win
+	if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_win_is_valid(win) then
+		local cursor = vim.api.nvim_win_get_cursor(win)
+		local line = vim.api.nvim_buf_get_lines(buf, cursor[1] - 1, cursor[1], false)[1] or ""
+		local col = cursor[2] + 1
+		for _, link in ipairs(compile.general.match_links(line)) do
+			if col >= link.start and col <= link.finish then
+				compile.open_link()
+				return
+			end
+		end
+	end
+	compile.nearest_error()
 end
 
 local blink_ns = vim.api.nvim_create_namespace("RunBlinkNS")
@@ -559,6 +699,7 @@ function compile.setup(opts)
 	compile.term.setup(compile.opts)
 	compile.highlight.setup(compile.opts)
 	compile.keymaps.setup(compile.opts)
+	compile.general.setup(compile.opts)
 end
 
 return compile
