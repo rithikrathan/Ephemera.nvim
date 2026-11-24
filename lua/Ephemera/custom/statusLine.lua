@@ -22,10 +22,20 @@ local ft_map = {
     ["note"]            = { name = "NotePad", icon = "📑", color = "#ff9966" },
     ["Reference"]       = { name = "Reference", icon = "📓", color = "#ff9966" },
     ["gnote"]           = { name = "Global_Note", icon = "📑", color = "#ff9966" },
+
     -- NOTE:these are search and command in text buffer  so we can use
     -- vim motions not to be confused with the lsp stuffs
     ["bufcmd"]          = { name = "Command", icon = "</>", color = "#09a409" },
     ["bufsearch"]       = { name = "Search", icon = "🔍", color = "#0990a2" },
+
+    -- Terminal applications
+    ["terminal"]        = { name = "Terminal",    icon = "",  color = "#83a598" },
+    ["agy"]             = { name = "Antigravity", icon = "󰚩",  color = "#83a598" },
+    ["btop"]            = { name = "Btop",        icon = "󰒼",  color = "#8ec07c" },
+    ["superfile"]       = { name = "Superfile",   icon = "",  color = "#fabd2f" },
+    ["spf"]             = { name = "Superfile",   icon = "",  color = "#fabd2f" },
+    ["timr"]            = { name = "Timr",        icon = "",  color = "#fe8019" },
+    ["otto"]            = { name = "Otto",        icon = "",  color = "#ff9966" },
 }
 
 _G.git_branch = ""
@@ -56,6 +66,93 @@ function _G.EphemeraStatusLine()
 end
 
 vim.opt.statusline = "%!v:lua.EphemeraStatusLine()"
+
+-- ============================================================================
+--  CAPSLOCK ENGINE  (async, never blocks the statusline)
+-- ============================================================================
+_G.CapsState = {
+    on = false,
+    pending = false,
+    supported = vim.fn.executable("hyprctl") == 1,
+    timer = vim.loop.new_timer(),
+}
+
+local function parse_caps(json)
+    local ok, dev = pcall(vim.json.decode, json)
+    if not ok or type(dev) ~= "table" or type(dev.keyboards) ~= "table" then return false end
+    for _, kb in ipairs(dev.keyboards) do
+        if kb.capsLock then return true end
+    end
+    return false
+end
+
+local function poll_caps()
+    if not _G.CapsState.supported or _G.CapsState.pending then return end
+    _G.CapsState.pending = true
+
+    vim.system({ "hyprctl", "-j", "devices" }, { text = true }, function(res)
+        _G.CapsState.pending = false
+        local on = _G.CapsState.on
+        if res.code == 0 then on = parse_caps(res.stdout or "") end
+        if on ~= _G.CapsState.on then
+            _G.CapsState.on = on
+            vim.schedule(function() pcall(vim.cmd, "redrawstatus") end)
+        end
+    end)
+end
+
+if _G.CapsState.supported then
+    poll_caps()
+    -- poll in every mode, redraw fires only when the value changes
+    _G.CapsState.timer:start(150, 400, function()
+        vim.schedule(poll_caps)
+    end)
+    vim.api.nvim_create_autocmd({ "ModeChanged", "TermOpen" }, { callback = poll_caps })
+end
+
+-- ============================================================================
+--  TERMINAL APP DETECTION
+-- ============================================================================
+local function detect_term_app(bufnr)
+    bufnr = bufnr or 0
+    local name = vim.api.nvim_buf_get_name(bufnr)
+    local cmd = name:match("term://.-//%d+:(.+)")
+    if not cmd then return nil end
+    local bin = cmd:match("^(%S+)")
+    if not bin then return nil end
+    bin = vim.fs.basename(bin)
+
+    local aliases = {
+        ["spf"] = "superfile",
+        ["fish"] = "terminal",
+        ["bash"] = "terminal",
+        ["zsh"] = "terminal",
+        ["sh"] = "terminal",
+    }
+    return aliases[bin] or bin
+end
+
+vim.api.nvim_create_autocmd("TermOpen", {
+    group = vim.api.nvim_create_augroup("EphemeraTermDetect", { clear = true }),
+    callback = function(args)
+        local app = detect_term_app(args.buf)
+        if not app then return end
+
+        vim.bo[args.buf].filetype = app
+
+        -- Safely rename buffer to clean plain text (no symbols)
+        vim.schedule(function()
+            if not vim.api.nvim_buf_is_valid(args.buf) then return end
+            local target = app
+            local i = 1
+            while vim.fn.bufexists(target) == 1 and vim.fn.bufnr(target) ~= args.buf do
+                i = i + 1
+                target = string.format("%s (%d)", app, i)
+            end
+            pcall(vim.api.nvim_buf_set_name, args.buf, target)
+        end)
+    end,
+})
 
 -- ============================================================================
 --  MODULE DEFINITIONS
@@ -128,7 +225,7 @@ function Modules.render_left_core()
     local info_state    = is_custom and (m:match("^[vV\22]") and "Vis" or "Norm") or state
     local info_group    = "Info" .. info_state
     local end_sep_group = "Sep" .. info_state .. "Trans"
-
+    local first_sep_group = ""
     -- DYNAMICALLY CREATE SEPARATOR HIGHLIGHTS
     -- 1. Bridge Custom Mode -> Standard Info (Transitions from VENN/MULTI colors to Normal/Visual colors)
     Modules.set_bridge_hl(mid_sep_group, mode_group, info_group, true)
@@ -136,10 +233,9 @@ function Modules.render_left_core()
     -- 2. Bridge Standard Info -> StatusBody
     Modules.set_bridge_hl(end_sep_group, info_group, "StatusBody", true)
 
-    -- Construct the Mode Block
     local mode_block = string.format(
-        "%%#%s# %s %%#%s#",
-        mode_group, label, mid_sep_group
+        "%%#%s# %s %%#%s#%s",
+        mode_group, _G.CapsState.on and ("⇪ " .. label) or label, mid_sep_group, first_sep_group
     )
 
     local branch = (_G.git_branch ~= "") and (_G.git_branch .. "┆ ") or " "
@@ -147,6 +243,16 @@ function Modules.render_left_core()
 
     local filename_text, icon, icon_hl = "", "", info_group
     local ft = vim.bo.filetype
+
+    if (ft == "" or ft == "terminal") and vim.bo.buftype == "terminal" then
+        local app = detect_term_app(0)
+        if app then
+            ft = app
+        else
+            ft = "terminal"
+        end
+    end
+
     local devicons_ok, devicons = pcall(require, "nvim-web-devicons")
 
     if ft_map[ft] then
@@ -157,6 +263,14 @@ function Modules.render_left_core()
         local mode_bg = vim.api.nvim_get_hl(0, { name = info_group }).bg
         vim.api.nvim_set_hl(0, "SlCustomIcon" .. ft, { fg = entry.color, bg = mode_bg, bold = true })
         icon_hl = "SlCustomIcon" .. ft
+    elseif vim.bo.buftype == "terminal" then
+        local app = (ft ~= "" and ft) or detect_term_app(0) or vim.fn.expand("%:t")
+        if app == "" or app:match("^%d+:") then app = "Terminal" end
+        filename_text = app:sub(1, 1):upper() .. app:sub(2)
+        icon = ""
+        local mode_bg = vim.api.nvim_get_hl(0, { name = info_group }).bg
+        vim.api.nvim_set_hl(0, "SlCustomIconTerm", { fg = "#83a598", bg = mode_bg, bold = true })
+        icon_hl = "SlCustomIconTerm"
     else
         local fname = vim.fn.expand("%:t")
         filename_text = (fname == "") and "[No Name]" or fname
@@ -485,7 +599,7 @@ local function update_git()
         vim.schedule(function()
             if out.code == 0 then
                 local b = vim.trim(out.stdout)
-                _G.git_branch = (b ~= "") and ("   " .. b .. " ") or ""
+                _G.git_branch = (b ~= "") and ("  " .. b .. " ") or ""
             else
                 _G.git_branch = ""
             end

@@ -182,6 +182,10 @@ local function detect_project_command(dir)
 			return "cc -o nob nob.c && ./nob"
 		elseif ext == "c" then
 			return string.format("gcc -Wall -Wextra %s -o %s && ./%s", filename, stem, stem)
+
+		elseif ext == "pde" then
+			return string.format("processing cli --sketch=../%s --run", stem)
+
 		elseif ext == "cpp" or ext == "cc" or ext == "cxx" then
 			return string.format("g++ -std=c++20 -Wall -Wextra %s -o %s && ./%s", filename, stem, stem)
 		elseif ext == "py" then

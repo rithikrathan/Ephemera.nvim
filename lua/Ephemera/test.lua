@@ -1,0 +1,62 @@
+-- vim.keymap.set("v", "<leader>r", function()
+--   -- Yank selection into register "z without touching default registers
+--   vim.cmd('noau normal! "zy')
+--   local text = vim.fn.getreg("z")
+--   local escaped = vim.fn.escape(text, [[/\*~[]$^.]])
+--   escaped = vim.fn.substitute(escaped, "\n", [[\n]], "g")
+--
+--   -- Pre-fills :%s/selected_text//gc and positions cursor between the slashes
+--   local cmd = string.format(":%ss/%s//gc<Left><Left><Left>", "%", escaped)
+--   local keys = vim.api.nvim_replace_termcodes(cmd, true, false, true)
+--   vim.api.nvim_feedkeys(keys, "n", false)
+-- end, { desc = "Query replace visual selection" })
+
+-- vim.keymap.set("v", "<leader>r", function()
+--   -- 1. Grab visual selection into register "z without touching default registers
+--   vim.cmd('noau normal! "zy')
+--   local old_text = vim.fn.getreg("z")
+--
+--   -- Record cursor starting position to measure what gets typed
+--   local start_pos = vim.api.nvim_win_get_cursor(0)
+--
+--   -- 2. Delete the visual selection and drop into insert mode
+--   vim.cmd('normal! "_c')
+--
+--   -- 3. Intercept when you finish typing in-place (<Esc>)
+--   local group = vim.api.nvim_create_augroup("InlineQueryReplace", { clear = true })
+--   vim.api.nvim_create_autocmd("InsertLeave", {
+--     group = group,
+--     once = true,
+--     callback = function()
+--       local end_pos = vim.api.nvim_win_get_cursor(0)
+--       local line = vim.api.nvim_get_current_line()
+--
+--       -- Extract what was typed at the edit site
+--       -- (End position column is 0-indexed; clamp boundaries safely)
+--       local s_col = start_pos[2]
+--       local e_col = end_pos[2]
+--       if s_col > e_col then
+--         s_col, e_col = e_col, s_col
+--       end
+--       local new_text = string.sub(line, s_col + 1, e_col + 1)
+--
+--       -- Clean up the temporary replacement in the current line so :%s handles it cleanly
+--       vim.cmd("undo")
+--
+--       -- Escape search pattern (POSIX regex + slashes)
+--       local escaped_search = vim.fn.escape(old_text, [[/\*~[]$^.]])
+--       escaped_search = vim.fn.substitute(escaped_search, "\n", [[\n]], "g")
+--
+--       -- Escape replacement string (handle backslashes, slashes, and ampersands)
+--       local escaped_replace = vim.fn.escape(new_text, [[/\]])
+--       escaped_replace = vim.fn.escape(escaped_replace, "&")
+--       escaped_replace = vim.fn.substitute(escaped_replace, "\n", [[\r]], "g")
+--
+--       -- Feed query-replace command directly with your typed replacement
+--       local cmd = string.format(":%ss/%s/%s/gc<CR>", "%", escaped_search, escaped_replace)
+--       local keys = vim.api.nvim_replace_termcodes(cmd, true, false, true)
+--       vim.api.nvim_feedkeys(keys, "n", false)
+--     end,
+--   })
+-- end, { desc = "Edit selection in-place, then query-replace across buffer" })
+

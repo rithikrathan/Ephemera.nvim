@@ -31,9 +31,11 @@ local function setup_run_blink()
 	})
 end
 
+local opts = {}
+
 --- Initialize highlight module
 function compile.highlight.setup(o)
-	opts = o
+	opts = o or {}
 	setup_run_blink()
 	vim.api.nvim_create_autocmd("ColorScheme", {
 		callback = setup_run_blink,
@@ -163,7 +165,21 @@ local function highlight_extract(location_pattern, entry)
 			pos = { { r_r, r_c }, { r_r2, r_c2 } },
 		}
 
-		-- Apply highlights if buffer is valid
+		-- Guard: Reject numeric data matches (e.g. space-separated numbers)
+		if formatted.file.val:match("^%d+$") then
+			return
+		end
+
+		-- Prevent duplicate matches on the same terminal line
+		local line_num = formatted.file.pos[1][1]
+		for _, existing_key in ipairs(compile.highlight.state.warning_index) do
+			local existing = compile.highlight.state.warning_list[existing_key]
+			if existing and existing.file.pos[1][1] == line_num then
+				return
+			end
+		end
+
+		-- Apply highlights only after checks pass
 		if vim.api.nvim_buf_is_valid(term_buf) then
 			pcall(vim.hl.range,
 				term_buf,
@@ -181,24 +197,9 @@ local function highlight_extract(location_pattern, entry)
 			)
 		end
 
-		-- Store warning (preventing duplicate matches on the same terminal line)
 		local key = formatted.file.val .. ":" .. formatted.row.val .. ":" .. formatted.col.val
-		if not compile.highlight.state.warning_list[key] then
-			local line_num = formatted.file.pos[1][1]
-			local already_exists = false
-			for _, existing_key in ipairs(compile.highlight.state.warning_index) do
-				local existing = compile.highlight.state.warning_list[existing_key]
-				if existing and existing.file.pos[1][1] == line_num and existing.file.val == formatted.file.val and existing.row.val == formatted.row.val then
-					already_exists = true
-					break
-				end
-			end
-
-			if not already_exists then
-				compile.highlight.state.warning_list[key] = formatted
-				table.insert(compile.highlight.state.warning_index, key)
-			end
-		end
+		compile.highlight.state.warning_list[key] = formatted
+		table.insert(compile.highlight.state.warning_index, key)
 		return
 	end
 
@@ -250,7 +251,21 @@ local function highlight_extract(location_pattern, entry)
 		pos = { { c_r, c_c }, { c_r2, c_c2 } },
 	}
 
-	-- Apply highlights if buffer is valid
+	-- Guard: Reject numeric data matches (e.g. space-separated numbers)
+	if formatted.file.val:match("^%d+$") then
+		return
+	end
+
+	-- Prevent duplicate matches on the same terminal line
+	local line_num = formatted.file.pos[1][1]
+	for _, existing_key in ipairs(compile.highlight.state.warning_index) do
+		local existing = compile.highlight.state.warning_list[existing_key]
+		if existing and existing.file.pos[1][1] == line_num then
+			return
+		end
+	end
+
+	-- Apply highlights only after checks pass
 	if vim.api.nvim_buf_is_valid(term_buf) then
 		pcall(vim.hl.range,
 			term_buf,
@@ -275,31 +290,23 @@ local function highlight_extract(location_pattern, entry)
 		)
 	end
 
-	-- Store warning (preventing duplicate matches on the same terminal line)
 	local key = formatted.file.val .. ":" .. formatted.row.val .. ":" .. formatted.col.val
-	if not compile.highlight.state.warning_list[key] then
-		local line_num = formatted.file.pos[1][1]
-		local already_exists = false
-		for _, existing_key in ipairs(compile.highlight.state.warning_index) do
-			local existing = compile.highlight.state.warning_list[existing_key]
-			if existing and existing.file.pos[1][1] == line_num and existing.file.val == formatted.file.val and existing.row.val == formatted.row.val then
-				already_exists = true
-				break
-			end
-		end
-
-		if not already_exists then
-			compile.highlight.state.warning_list[key] = formatted
-			table.insert(compile.highlight.state.warning_index, key)
-		end
-	end
+	compile.highlight.state.warning_list[key] = formatted
+	table.insert(compile.highlight.state.warning_index, key)
 end
 
 --- Process incoming terminal output
 ---@param logical_lines table[] entries { text, start_row, nseg, wrap }
 function compile.highlight.process_lines(logical_lines)
 	local pattern_keys = vim.tbl_keys(opts.patterns)
-	table.sort(pattern_keys)
+	table.sort(pattern_keys, function(a, b)
+		local is_generic_a = (a == "gcc" or a == "grep" or a == "rg")
+		local is_generic_b = (b == "gcc" or b == "grep" or b == "rg")
+		if is_generic_a ~= is_generic_b then
+			return not is_generic_a
+		end
+		return a < b
+	end)
 	for _, key in ipairs(pattern_keys) do
 		for _, entry in ipairs(logical_lines) do
 			highlight_extract(opts.patterns[key], entry)

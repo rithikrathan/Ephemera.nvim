@@ -270,7 +270,7 @@ vim.api.nvim_create_user_command('LockIn', function()
     vim.opt.scrolloff = 999
     print("Cursor Locked: Center")
   else
-    vim.opt.scrolloff = 5
+    vim.opt.scrolloff = 10
     print("Cursor Unlocked")
   end
 end, { desc = "Toggle typewriter-style center cursor lock" })
@@ -325,6 +325,24 @@ end, {
 vim.api.nvim_create_user_command('ToggleReadMode', function()
   require("Ephemera.custom.readMode").toggle()
 end, { desc = "Toggle Read Mode (focus reading dense paragraphs)" })
+
+
+vim.api.nvim_create_augroup("MarkdownFormatting", { clear = true })
+
+vim.api.nvim_create_autocmd({ "BufReadPost", "BufWritePre" }, {
+    group = "MarkdownFormatting",
+    pattern = "*.md",
+    callback = function()
+        local view = vim.fn.winsaveview()
+
+        vim.cmd(
+            [[%!prettier --parser markdown --prose-wrap always --print-width 110]]
+        )
+
+        vim.fn.winrestview(view)
+    end,
+})
+
 
 -- LiveTerminal session
 

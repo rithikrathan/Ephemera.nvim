@@ -77,10 +77,11 @@ return {
 		global = {
 			["n"] = {
 				["<localleader>c"] = "require('Ephemera.custom.runMode').term.toggle()",
+				["<Esc>"] = "require('Ephemera.custom.runMode').term.toggle()",
 				["<localleader>cf"] = "require('Ephemera.custom.runMode').term.jump_to()",
 				["<localleader>cw"] = "require('Ephemera.custom.runMode').toggle_watch()",
 				["<localleader>cW"] = "require('Ephemera.custom.runMode').toggle_watch_file_dir()",
-				["<localleader>cx"] = "require('Ephemera.custom.runMode').destroy()",
+				["<Esc>"] = "require('Ephemera.custom.runMode').destroy()",
 				["<F5>"] = "require('Ephemera.custom.runMode').run_last()",
 				["<F6>"] = "require('Ephemera.custom.runMode').run_prompt()",
 				["<S-F5>"] = "require('Ephemera.custom.runMode').run_file_dir()",
@@ -116,6 +117,9 @@ return {
 				["t"] = {
 					["<CR>"] = "require('Ephemera.custom.runMode').clear_hl()",
 					["<C-j>"] = "require('Ephemera.custom.runMode.term').send_cmd('')",
+                    ["<Esc>"] = "require('Ephemera.custom.runMode').destroy()",
+                    ["<F5>"] = "require('Ephemera.custom.runMode').run_last()",
+                    ["<F6>"] = "require('Ephemera.custom.runMode').run_prompt()",
 				},
 			},
 		},

@@ -2,6 +2,11 @@ return {
 	{
 		"github/copilot.vim",
 		cmd = "Copilot",
+		init = function()
+			-- Use the locally installed language server instead of npx (avoids
+			-- re-downloading the package on every start after :Copilot upgrade).
+			vim.g.copilot_command = "/home/rithik/.local/share/nvim/copilot-language-server/node_modules/@github/copilot-language-server/dist/language-server.js"
+		end,
 		config = function()
 			-- Accept suggestion with Alt+i
 			vim.keymap.set("i", "<A-i>", 'copilot#Accept("\\<CR>")', {
@@ -10,8 +15,8 @@ return {
 				replace_keycodes = false,
 			})
 
-			-- Next suggestion with Alt+l
-			vim.keymap.set("i", "<A-l>", "<Plug>(copilot-next)")
+			-- Next suggestion with <leader>cn
+			vim.keymap.set("i", "<leader>cn", "<Plug>(copilot-next)")
 		end,
 	},
 	{

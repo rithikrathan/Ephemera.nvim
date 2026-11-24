@@ -40,16 +40,26 @@
                 -- patterns = { lua_pattern, capture_order }
                 -- capture_order: "123" = file,col,row ; "12" = file,row ; "21" = row,file
 
+                -- Processing 4 CLI: sketch.pde:49:0:49:0: The function multiply(...)
+                processing_cli = { "([^%s:]+%.%a+):(%d+):(%d+):%d+:%d+:", "123" },
+
                 -- Ripgrep / Ag / Ack / Git Grep with Column (file:line:col:)
-                rg = { "(%S+):(%d+):(%d+):", "123" },
+                rg = { "([^%s:]+):(%d+):(%d+):", "123" },
 
                 -- Ripgrep / Grep -n / Git Grep -n / Standard Line Match (file:line:)
-                grep = { "(%S+):(%d+):", "12" },
+                grep = { "([^%s:]+):(%d+):", "12" },
+
+                -- GCC / Clang / arm-none-eabi-gcc / Android NDK (file:line:col:)
+                gcc = { "([^%s:]+):(%d+):(%d+)", "123" },
+
+                -- Parenthesized coordinates: file.ext(line,col) - C#, MSVC, TypeScript, Pascal, Nim
+                parentheses = { "(%S+%.%a+)%((%d+),?%s*(%d+)%)", "123" },
 
                 -- ctags -x output (name kind line file def)
-                ctags_x = { "^%S+%s+[%w_]+%s+(%d+)%s+(%S+)", "21" },
+                -- Requires valid identifier name, letter kind, and filename with extension
+                ctags_x = { "^[%a_][%w_]*%s+%a+%s+(%d+)%s+(%S+%.%a+)", "21" },
 
-                -- ctags tags file (name \t file \t line;" \t kind)
+                -- ctags tags file (name \t file \t line;\" \t kind)
                 ctags_tags = { "^%S+%s+(%S+)%s+(%d+);\"", "12" },
 
                 -- ShellCheck (bash / sh linter)
@@ -72,7 +82,6 @@
 
                 -- Node.js / V8 / Jest / Vitest stacktraces
                 v8_stack = { "at .-%((%S+):(%d+):(%d+)%)", "123" },
-                v8_direct = { "at (%S+):(%d+):(%d+)", "123" },
 
                 -- Rust Backtrace (RUST_BACKTRACE=1) / Cargo
                 rust_backtrace = { "at (%S+%.rs):(%d+):(%d+)", "123" },
@@ -80,7 +89,6 @@
 
                 -- Go Panic / Test Stacktrace
                 go_panic = { "(%S+%.go):(%d+) %+0x", "12" },
-                go = { "(%S+%.%a+):(%d+):(%d+):", "123" },
 
                 -- Ruby / RuboCop stacktrace
                 ruby_stack = { "from (%S+%.rb):(%d+):in", "12" },
@@ -89,104 +97,23 @@
                 phpstan = { "(%S+%.php):(%d+)", "12" },
                 php_fatal = { "in (%S+%.php) on line (%d+)", "12" },
 
-                -- GCC / Clang / arm-none-eabi-gcc / Android NDK (file:line:col:)
-                gcc = { "(%S+):(%d+):(%d+)", "123" },
-
-                -- Rust: error[E0423] --> src/main.rs:4:5
-                rust = { "%-%-> (%S+):(%d+):(%d+)", "123" },
-
-                -- C# / MSVC / Roslyn: src/Program.cs(10,5): error CS1002
-                csharp = { "(%S+%.%a+)%((%d+),(%d+)%)", "123" },
-
-                -- TypeScript (tsc): src/index.ts(12,5): error TS2304: Cannot find name
-                typescript = { "(%S+%.%a+)%((%d+),(%d+)%)", "123" },
-
-                -- TypeScript eslint-tsc line format: src/index.ts:12:5 - error TS2304:
-                typescript_line = { "(%S+%.%a+):(%d+):(%d+)%s+%-%s+error%s+TS", "123" },
-
-                -- Python: File "src/main.py", line 12
-                python = { 'File "(%S+%.%a+)", line (%d+)', "12" },
-
-                -- Go: ./main.go:12:5: undefined: foo
-                go = { "(%S+%.%a+):(%d+):(%d+):", "123" },
-
-                -- Java (javac / Gradle): src/Main.java:12: error: cannot find symbol
-                java = { "(%S+%.%a+):(%d+):", "12" },
-
                 -- Makefile: [Makefile:12: *** missing separator.  Stop.
                 Makefile = { "%[(%S+):(%d+):.+%]", "12" },
 
                 -- Perl: at foo.pl line 12.
                 perl = { "at (%S+%.%a+) line (%d+)", "12" },
 
-                -- Nim: Error: undeclared identifier ... /tmp/main.nim(10, 5)
-                nim = { "(%S+%.%a+)%((%d+), (%d+)%)", "123" },
-
-                -- Lua: lua: main.lua:12: attempt to index nil value
-                lua = { "(%S+%.%a+):(%d+):", "12" },
-
                 -- CMake: CMake Error at CMakeLists.txt:12 (message):
                 cmake = { "(%S+%.%a+):(%d+)", "12" },
-
-                -- Dart: Error: lib/main.dart:12:5: Undefined name 'foo'
-                dart = { "(%S+%.%a+):(%d+):(%d+):", "123" },
 
                 -- VHDL (Xilinx Vivado): **ERROR** src/top.vhd:10(5): ...
                 vhdl = { "(%S+%.%a+):(%d+)%((%d+)%)", "123" },
 
-                -- Verilator: %Error: src/top.sv:12:5: syntax error
-                verilator = { "(%S+%.%a+):(%d+):(%d+):", "123" },
-
-                -- Elixir (Mix): ** (UndefinedFunctionError) lib/app.ex:12
-                elixir = { "(%S+%.%a+):(%d+):", "12" },
-
-                -- Erlang: src/app.erl:12:5: function foo/0 undefined
-                erlang = { "(%S+%.%a+):(%d+):(%d+):", "123" },
-
-                -- Julia: ERROR: LoadError at main.jl:12:5
-                julia = { "(%S+%.%a+):(%d+):(%d+)", "123" },
-
-                -- Swift: src/main.swift:12:5: error: cannot find 'foo' in scope
-                swift = { "(%S+%.%a+):(%d+):(%d+):", "123" },
-
-                -- Clojure: CompilerException src/core.clj:12, compiling:(core.clj:5:1)
-                clojure = { "(%S+%.%a+):(%d+):", "12" },
-
-                -- Crystal: Error in src/main.cr:12
-                crystal = { "(%S+%.%a+):(%d+):", "12" },
-
-                -- Haskell (GHC): src/Main.hs:12:5: error: Variable not in scope
-                haskell = { "(%S+%.%a+):(%d+):(%d+):", "123" },
-
-                -- Delphi / Free Pascal: src/main.pas(12,5) Error: undeclared identifier
-                pascal = { "(%S+%.%a+)%((%d+),(%d+)%)", "123" },
-
-                -- Ada / GNAT: src/main.adb:12:5: error: ...
-                ada = { "(%S+%.%a+):(%d+):(%d+):", "123" },
-
                 -- SystemVerilog (Questa/VCS): ** Error: src/top.sv(12)
                 systemverilog = { "(%S+%.%a+)%((%d+)%)", "12" },
 
-                -- Octave / MATLAB: error: src/main.m:12
-                matlab = { "(%S+%.%a+):(%d+):", "12" },
-
-                -- Groovy (Gradle): src/main.groovy:12:5: error: ...
-                groovy = { "(%S+%.%a+):(%d+):(%d+):", "123" },
-
-                -- Scala: src/main.scala:12:5: error: not found: value foo
-                scala = { "(%S+%.%a+):(%d+):(%d+):", "123" },
-
-                -- Flix: src/main.flix:12:5 -- error ...
-                flix = { "(%S+%.%a+):(%d+):(%d+)", "123" },
-
-                -- Android aapt2: error: resource not found in src/main/res/values/styles.xml:12
-                android = { "(%S+%.%a+):(%d+):", "12" },
-
-                -- Processing: classic console "sketch.pde:5:2: Syntax error"
-                -- (also covered by the gcc pattern), plus Processing 4 friendly:
-                -- (On line 48 in sketch_230710a.pde)
-                processing_classic = { "(%S+%.%a+):(%d+):(%d+):", "123" },
-                processing = { "On line (%d+) in (%S+%.%a+)", "21" },
+                -- Processing 4 friendly: (On line 48 in sketch_230710a.pde)
+                processing_inline = { "On line (%d+) in (%S+%.%a+)", "21" },
             },
 
             colors = {

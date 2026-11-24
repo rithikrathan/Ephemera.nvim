@@ -14,6 +14,7 @@ require("Ephemera.custom.welcome").setup() -- Local welcomeScreen
 require("Ephemera.custom.statusLine")      -- Local statusline
 require("Ephemera.pluginConfig")           -- Global pluginConfigs
 require("Ephemera.commands")               -- Autocommands and user defined commands
+require("Ephemera.test")               --  some test screipts
 require("Ephemera.custom.tabBar").setup()  -- floating tab sidebar
 require("Ephemera.custom.buffer").setup()  -- scratchpad, notepad, reference
 require("Ephemera.custom.runMode.config") -- runMode (vendored fork)

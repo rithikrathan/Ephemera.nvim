@@ -11,6 +11,7 @@ vim.keymap.set("n", "<leader>9", "q/", { desc = "bufferSearch" })
 vim.keymap.set("i", "<A-o>", '<Esc>o', { desc = "Insert line below" })
 vim.keymap.set("i", "<A-O>", '<Esc>O', { desc = "Insert line above" })
 
+
 -- Toggle github/copilot.vim plugin
 vim.keymap.set("n", "<leader>cp", function()
     -- 0 means disabled, 1 means enabled
@@ -37,6 +38,8 @@ vim.keymap.set("n", "<leader>u", vim.cmd.UndotreeToggle, { desc = "Toggle Undotr
 -- Basic Mappings
 vim.keymap.set({ "n", "v", "t", "i" }, "<A-n>", '<CR>', { remap = true, desc = "Enter/confirm" })
 
+
+
 -- copy and paste with system clipboard
 vim.keymap.set("v", "<leader>y", function() vim.api.nvim_exec('normal! "+y', false) end,
     { remap = true, desc = "Yank to system clipboard" })
@@ -46,6 +49,24 @@ vim.keymap.set("n", "<F8>", ":e!<CR>", { desc = "Reload current file" })
 
 vim.keymap.set("v", ">", ">gv", { desc = "Indent and reselect" })
 vim.keymap.set("v", "<", "<gv", { desc = "Dedent and reselect" })
+
+-- Search the visually selected text literally and jump to its next occurrence
+vim.keymap.set("x", "n", function()
+    local lines = vim.fn.getregion(vim.fn.getpos("v"), vim.fn.getpos("."), {
+        type = vim.fn.mode(),
+    })
+    local text = table.concat(lines, "\n")
+    if text == "" then
+        return
+    end
+
+    -- Escape regex metacharacters so the selection is matched literally
+    local pattern = vim.fn.escape(text, "\\/.*$^~[]"):gsub("\n", "\\n")
+    vim.fn.setreg("/", pattern)
+
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "x", true)
+    vim.cmd("normal! n")
+end, { desc = "Search selected text and jump to next occurrence", silent = true })
 vim.keymap.set({ "n", "i" }, "<A-[>", "zt", { desc = "Scroll cursor to top" })
 vim.keymap.set("n", "<leader>pv", vim.cmd.Ex, { desc = "Netrw file explorer" })
 vim.keymap.set({ "v", "i" }, "<leader><Tab>", "<Esc>", { noremap = true, silent = true, desc = "Escape to normal mode" })
@@ -56,6 +77,10 @@ vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv", { desc = "Move selection down" })
 vim.keymap.set("v", "K", ":m '<-2<CR>gv=gv", { desc = "Move selection up" })
 vim.keymap.set("n", "<C-d>", "<C-d>zz", { desc = "Half page down (centered)" })
 vim.keymap.set("n", "<C-u>", "<C-u>zz", { desc = "Half page up (centered)" })
+
+vim.keymap.set("n", "<C-s>", ":w<CR>", { desc = "save current buffer" })
+vim.keymap.set("n", "<C-x>y", ":wqa!<CR>", { desc = "save all and quit forced" })
+
 vim.keymap.set("n", "n", "nzzzv", { desc = "Next search (centered)" })
 vim.keymap.set("n", "N", "Nzzzv", { desc = "Prev search (centered)" })
 vim.keymap.set("n", "H", "^", { desc = "Go to line start" })
@@ -250,7 +275,10 @@ vim.keymap.set("n", "<leader>gq", function()
     end)
 end, { desc = "Grep → quickfix" })
 
-
+-- refresh buffer with updated file
+vim.keymap.set("n", "<A-r>", function()
+    vim.cmd.edit({ bang = true })
+end, { desc = "Reload buffer" })
 
 --Plugin specific keymaps
 vim.keymap.set("n", "<leader>gs", vim.cmd.Git, { desc = "Open lazygit" })
@@ -397,7 +425,7 @@ vim.keymap.set("n", "<leader>i", toggle_logic, { desc = "Smart Toggle Inverse" }
 
 -- Toggle Read Mode
 vim.keymap.set("n", "<A-z>", function()
-  require("Ephemera.custom.readMode").toggle()
+    require("Ephemera.custom.readMode").toggle()
 end, { desc = "Toggle Read Mode" })
 
 -- testing new keymaps
@@ -420,24 +448,90 @@ vim.keymap.set("n", "<leader>sy", function() require("Ephemera.custom.scratchpad
 
 -- Insert banner
 vim.keymap.set('n', '<leader>b', function()
-  local cs = vim.bo.commentstring ~= '' and vim.bo.commentstring or '# %s'
-  local text = vim.fn.input('Banner: ')
-  if text == '' then return end
-  local banner = ('=-=-=-=-=-=-=-= [ %s ] =-=-=-=-=-=-=-='):format(text:upper())
-  vim.fn.append(vim.fn.line('.'), (cs:gsub('%%s', banner)))
+    local cs = vim.bo.commentstring ~= '' and vim.bo.commentstring or '# %s'
+    local text = vim.fn.input('Banner: ')
+    if text == '' then return end
+    local banner = ('=-=-=-=-=-=-=-= [ %s ] =-=-=-=-=-=-=-='):format(text:upper())
+    vim.fn.append(vim.fn.line('.'), (cs:gsub('%%s', banner)))
 
 end, { desc = 'Insert banner below cursor' })
 
 vim.keymap.set("n", "<Esc>", function()
-  local qf_win = vim.fn.getqflist({ winid = 0 }).winid
-  if qf_win ~= 0 then
-    vim.cmd("cclose")
-  else
-    vim.cmd("nohlsearch")
-  end
+    local qf_win = vim.fn.getqflist({ winid = 0 }).winid
+    if qf_win ~= 0 then
+        vim.cmd("cclose")
+    else
+        vim.cmd("nohlsearch")
+    end
 end, { desc = "Close qf or clear search highlight" })
 
+vim.keymap.set('n', '<leader>fm', function()
+    if vim.opt.foldmethod:get() == "expr" then
+        vim.opt.foldmethod = "manual"
+        print("foldmethod: manual")
+    else
+        vim.opt.foldmethod = "expr"
+        vim.opt.foldexpr = "v:lua.vim.treesitter.foldexpr()"
+        print("foldmethod: expr (treesitter)")
+    end
+end, { desc = "Toggle foldmethod manual/expr" })
+
 vim.keymap.set("n", "<leader>qf", function()
-  local qf_win = vim.fn.getqflist({ winid = 0 }).winid
-  if qf_win ~= 0 then vim.cmd("cclose") else vim.cmd("copen") end
+    local qf_win = vim.fn.getqflist({ winid = 0 }).winid
+    if qf_win ~= 0 then vim.cmd("cclose") else vim.cmd("copen") end
 end, { desc = "Toggle quickfix list" })
+
+-- query replace
+vim.keymap.set("v", "<leader>r", function()
+    -- 1. Get exact visual selection bounds using marks '< and '>
+    -- Must leave visual mode briefly with ESC to populate the marks accurately
+    local esc = vim.api.nvim_replace_termcodes("<Esc>", true, false, true)
+    vim.api.nvim_feedkeys(esc, "x", false)
+
+    local buf = 0
+    local mark_start = vim.api.nvim_buf_get_mark(buf, "<")
+    local mark_end = vim.api.nvim_buf_get_mark(buf, ">")
+
+    -- Convert (1-based line, 0-based col) marks to 0-based API indices
+    local s_row, s_col = mark_start[1] - 1, mark_start[2]
+    local e_row, e_col = mark_end[1] - 1, mark_end[2] + 1
+
+    -- 2. Extract selected text directly via API
+    local lines = vim.api.nvim_buf_get_text(buf, s_row, s_col, e_row, e_col, {})
+    local old_text = table.concat(lines, "\n")
+
+
+    -- 3. Delete the selected text directly via API (no registers touched)
+    vim.api.nvim_buf_set_text(buf, s_row, s_col, e_row, e_col, {})
+
+    -- Move cursor to the exact deletion point and enter insert mode
+    vim.api.nvim_win_set_cursor(0, { s_row + 1, s_col })
+    vim.cmd.startinsert()
+
+    -- 4. Listen for InsertLeave via autocmd
+    local group = vim.api.nvim_create_augroup("InlineQueryReplace", { clear = true })
+    vim.api.nvim_create_autocmd("InsertLeave", {
+        group = group,
+        once = true,
+        callback = function()
+            -- The text you just typed in insert mode is stored in register "."
+            local new_text = vim.fn.getreg(".")
+
+            -- Escape regex special characters in search pattern
+            local escaped_search = vim.fn.escape(old_text, [[/\*~[]$^.]])
+            escaped_search = vim.fn.substitute(escaped_search, "\n", [[\n]], "g")
+
+            -- Escape replacement special characters
+            local escaped_replace = vim.fn.escape(new_text, [[/\]])
+            escaped_replace = vim.fn.escape(escaped_replace, "&")
+            escaped_replace = vim.fn.substitute(escaped_replace, "\n", [[\r]], "g")
+
+            -- Trigger the query replace for remaining matches
+            vim.schedule(function()
+                local cmd = string.format(":%ss/%s/%s/gc<CR>", "%", escaped_search, escaped_replace)
+                local keys = vim.api.nvim_replace_termcodes(cmd, true, false, true)
+                vim.api.nvim_feedkeys(keys, "n", false)
+            end)
+        end,
+    })
+end, { desc = "Edit visual selection in-place and query-replace matches" })
